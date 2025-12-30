@@ -1,11 +1,11 @@
 {
   "$schema": "https://json.schemastore.org/chrome-manifest.json",
   "manifest_version": 3,
-  "name": "백준허브(BaekjoonHub)",
-  "description": "Automatically integrate your competitive programming submissions to GitHub",
-  "homepage_url": "https://github.com/BaekjoonHub/BaekjoonHub",
+  "name": "SsafyToday",
+  "description": "Automatically sync your competitive programming submissions to GitHub",
+  "homepage_url": "https://github.com/ssafytoday/SsafyToday",
   "version": "2.0.0",
-  "author": "flaxinger",
+  "author": "getCurrentThread",
   "action": {
     "default_icon": "assets/thumbnail.png",
     "default_popup": "popup.html"
