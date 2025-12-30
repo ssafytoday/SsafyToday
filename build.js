@@ -3,7 +3,7 @@ const path = require("path");
 const { zip } = require("fflate");
 
 async function build() {
-  console.log("Packaging BaekjoonHub extension...");
+  console.log("Packaging SsafyToday extension...");
 
   const packagesDir = path.join(__dirname, "packages");
   const distDir = path.join(__dirname, "dist");
@@ -18,7 +18,7 @@ async function build() {
   // Get version from package.json
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
   const version = packageJson.version;
-  const zipFileName = `baekjoonhub-v${version}.zip`;
+  const zipFileName = `ssafytoday-v${version}.zip`;
   const zipFilePath = path.join(packagesDir, zipFileName);
 
   console.log("Creating release package...");

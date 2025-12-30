@@ -38,7 +38,7 @@ jobs:
         id: get_release_package_name
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          RELEASE_PACKAGE_NAME="baekjoonhub-v${VERSION}.zip"
+          RELEASE_PACKAGE_NAME="ssafytoday-v${VERSION}.zip"
           echo "RELEASE_PACKAGE_NAME=${RELEASE_PACKAGE_NAME}" >> $GITHUB_ENV
           echo "Release package name: ${RELEASE_PACKAGE_NAME}"
 
