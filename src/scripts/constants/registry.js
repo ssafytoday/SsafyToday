@@ -11,4 +11,7 @@ export const STORAGE_KEYS = {
   PIPE: "baekjoonhub_pipe",
   IS_SYNC: "baekjoonhub_is_sync",
   SWEA: "baekjoonhub_swea",
+  // SSAFY Today API 설정
+  SSAFY_API_URL: "ssafytoday_api_url",
+  SSAFY_ENABLED: "ssafytoday_enabled",
 };

@@ -1,11 +1,12 @@
 import urls from "@/constants/url.js";
+import { STORAGE_KEYS } from "@/constants/registry.js";
 
 /*
     (needs patch)
     IMPLEMENTATION OF AUTHENTICATION ROUTE AFTER REDIRECT FROM GITHUB.
 */
 
-const KEY = "BaekjoonHub_token";
+const KEY = STORAGE_KEYS.TOKEN;
 const ACCESS_TOKEN_URL = urls.GITHUB_ACCESS_TOKEN_URL;
 const CLIENT_ID = urls.GITHUB_CLIENT_ID;
 const CLIENT_SECRET = urls.GITHUB_CLIENT_SECRET;
@@ -106,8 +107,8 @@ const link = window.location.href;
 
 /* Check for open pipe */
 if (window.location.host === "github.com") {
-  chrome.storage.local.get("pipeBaekjoonhub", (data) => {
-    if (data && data.pipe_baekjoonhub) {
+  chrome.storage.local.get(STORAGE_KEYS.PIPE, (data) => {
+    if (data && data[STORAGE_KEYS.PIPE]) {
       parseAccessCode(link);
     }
   });

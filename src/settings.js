@@ -1,4 +1,5 @@
 import { getObjectFromLocalStorage, saveObjectInLocalStorage } from "@/commons/storage.js";
+import { STORAGE_KEYS } from "@/constants/registry.js";
 
 import beginOAuth2 from "@/commons/oauth2.js";
 
@@ -29,8 +30,19 @@ const navigateToStep = (stepIndex) => {
  * Detects the mode (hook or commit) and sets the UI accordingly.
  */
 const detectAndSetMode = async () => {
-  const data = (await getObjectFromLocalStorage(["mode_type", "baekjoonHubHook", "baekjoonHubOrgOption", "baekjoonHubToken"])) || {};
-  const { mode_type: modeType, baekjoonHubHook: BaekjoonHubHook, baekjoonHubOrgOption: BaekjoonHubOrgOption, baekjoonHubToken: BaekjoonHubToken } = data;
+  const data = (await getObjectFromLocalStorage([STORAGE_KEYS.MODE_TYPE, STORAGE_KEYS.HOOK, STORAGE_KEYS.ORG_OPTION, STORAGE_KEYS.TOKEN])) || {};
+  console.log("[Settings] detectAndSetMode - loaded data:", data);
+  console.log("[Settings] Storage keys used:", {
+    MODE_TYPE: STORAGE_KEYS.MODE_TYPE,
+    HOOK: STORAGE_KEYS.HOOK,
+    ORG_OPTION: STORAGE_KEYS.ORG_OPTION,
+    TOKEN: STORAGE_KEYS.TOKEN,
+  });
+  const modeType = data[STORAGE_KEYS.MODE_TYPE];
+  const BaekjoonHubHook = data[STORAGE_KEYS.HOOK];
+  const BaekjoonHubOrgOption = data[STORAGE_KEYS.ORG_OPTION];
+  const BaekjoonHubToken = data[STORAGE_KEYS.TOKEN];
+  console.log("[Settings] Parsed values - modeType:", modeType, "hook:", BaekjoonHubHook, "token exists:", !!BaekjoonHubToken);
 
   if (modeType === "commit" && BaekjoonHubHook) {
     if (!BaekjoonHubToken) {
@@ -120,7 +132,9 @@ const handleCreateRepoStatusCode = (res, status, fullName) => {
       document.querySelector("#error").removeAttribute("hidden");
       break;
     default:
-      saveObjectInLocalStorage({ mode_type: "commit" }).then(() => {
+      console.log("[Settings] Creating repo - saving mode_type and hook...");
+      saveObjectInLocalStorage({ [STORAGE_KEYS.MODE_TYPE]: "commit" }).then(() => {
+        console.log("[Settings] Saved mode_type:", STORAGE_KEYS.MODE_TYPE, "= commit");
         document.querySelector("#error").style.display = "none";
         document.querySelector("#success").innerHTML = `Successfully created <a target='_blank' href='${res.html_url}'>${fullName}</a>. Start <a href='https://www.acmicpc.net/'>BOJ</a>!`;
         document.querySelector("#success").style.display = "block";
@@ -132,8 +146,8 @@ const handleCreateRepoStatusCode = (res, status, fullName) => {
         document.querySelector("#commit_mode").removeAttribute("hidden");
         detectAndSetMode(); // Refresh the settings page
       });
-      saveObjectInLocalStorage({ baekjoonHubHook: res.full_name }).then(() => {
-        console.log("Successfully set new repo hook");
+      saveObjectInLocalStorage({ [STORAGE_KEYS.HOOK]: res.full_name }).then(() => {
+        console.log("[Settings] Saved hook:", STORAGE_KEYS.HOOK, "=", res.full_name);
       });
       break;
   }
@@ -169,7 +183,8 @@ const createRepo = async (token, fullName) => {
     const stats = {};
     stats.version = chrome.runtime.getManifest().version;
     stats.submission = {};
-    saveObjectInLocalStorage({ stats });
+    saveObjectInLocalStorage({ [STORAGE_KEYS.STATS]: stats });
+    console.log("[Settings] Saved stats:", STORAGE_KEYS.STATS);
   } catch (error) {
     console.error(error);
     document.querySelector("#success").style.display = "none";
@@ -237,10 +252,11 @@ const linkRepo = async (token, name) => {
     const res = await response.json();
     const success = handleLinkRepoStatusCode(response.status, name);
     if (response.status === 200 && success) {
+      console.log("[Settings] Linking repo - saving mode_type and hook...");
       saveObjectInLocalStorage({
-        mode_type: "commit",
-        repo: res.html_url,
+        [STORAGE_KEYS.MODE_TYPE]: "commit",
       }).then(() => {
+        console.log("[Settings] Saved mode_type:", STORAGE_KEYS.MODE_TYPE, "= commit");
         document.querySelector("#error").style.display = "none";
         document.querySelector("#success").innerHTML =
           `Successfully linked <a target='_blank' href='${res.html_url}'>${name}</a> to BaekjoonHub. Start <a href='https://www.acmicpc.net/'>BOJ</a> now!`;
@@ -257,10 +273,11 @@ const linkRepo = async (token, name) => {
       const stats = {};
       stats.version = chrome.runtime.getManifest().version;
       stats.submission = {};
-      saveObjectInLocalStorage({ stats });
+      saveObjectInLocalStorage({ [STORAGE_KEYS.STATS]: stats });
+      console.log("[Settings] Saved stats:", STORAGE_KEYS.STATS);
 
-      saveObjectInLocalStorage({ baekjoonHubHook: res.full_name }).then(() => {
-        console.log("Successfully set new repo hook");
+      saveObjectInLocalStorage({ [STORAGE_KEYS.HOOK]: res.full_name }).then(() => {
+        console.log("[Settings] Saved hook:", STORAGE_KEYS.HOOK, "=", res.full_name);
       });
     } else {
       document.querySelector("#hook_mode").style.display = "block";
@@ -281,9 +298,9 @@ const linkRepo = async (token, name) => {
  */
 const unlinkRepo = () => {
   saveObjectInLocalStorage({
-    mode_type: "hook",
-    baekjoonHubHook: null,
-    baekjoonHubOrgOption: "platform",
+    [STORAGE_KEYS.MODE_TYPE]: "hook",
+    [STORAGE_KEYS.HOOK]: null,
+    [STORAGE_KEYS.ORG_OPTION]: "platform",
   }).then(() => {
     console.log("Unlinking repo and resetting options.");
     document.querySelector("#commit_mode").style.display = "none";
@@ -371,8 +388,9 @@ const handleRepoTypeChange = async function handleRepoTypeChange() {
   document.querySelector("#next_to_repo_name").disabled = !valueSelected; // This button will be removed later
 
   if (valueSelected === "link") {
-    const data = await getObjectFromLocalStorage(["baekjoonHubToken", "baekjoonHubUsername"]);
-    const { baekjoonHubToken: token, baekjoonHubUsername: username } = data || {};
+    const data = await getObjectFromLocalStorage([STORAGE_KEYS.TOKEN, STORAGE_KEYS.USERNAME]);
+    const token = data[STORAGE_KEYS.TOKEN];
+    const username = data[STORAGE_KEYS.USERNAME];
 
     if (token && username) {
       document.querySelector("#success").textContent = "Fetching your repositories... Please wait.";
@@ -400,8 +418,8 @@ const handleRepoTypeChange = async function handleRepoTypeChange() {
       document.querySelector("#authorize_button").addEventListener("click", beginOAuth2);
     }
   } else if (valueSelected === "new") {
-    const data = await getObjectFromLocalStorage(["baekjoonHubUsername"]);
-    const { baekjoonHubUsername: username } = data || {};
+    const data = await getObjectFromLocalStorage([STORAGE_KEYS.USERNAME]);
+    const username = data[STORAGE_KEYS.USERNAME];
     if (username) {
       prefillTextInput(username);
     } else {
@@ -450,7 +468,7 @@ const handleFinishSetupClick = async () => {
   document.querySelector("#success").style.display = "block";
   document.querySelector("#success").removeAttribute("hidden");
 
-  const token = await getObjectFromLocalStorage("baekjoonHubToken");
+  const token = await getObjectFromLocalStorage(STORAGE_KEYS.TOKEN);
   if (!token) {
     document.querySelector("#error").innerHTML =
       'Authorization error - Grant BaekjoonHub access to your GitHub account to continue. <button id="authorize_button" class="button positive">Authorize</button>';
@@ -468,7 +486,7 @@ const handleFinishSetupClick = async () => {
   }
 
   const orgOption = getOrgOption();
-  saveObjectInLocalStorage({ baekjoonHubOrgOption: orgOption }).then(() => {
+  saveObjectInLocalStorage({ [STORAGE_KEYS.ORG_OPTION]: orgOption }).then(() => {
     console.log(`Set Organize by ${orgOption}`);
   });
 };
@@ -484,21 +502,21 @@ const handleOrgOptionChange = async () => {
   if (orgOption === "custom") {
     customTemplateField.style.display = "block";
     customTemplateField.removeAttribute("hidden");
-    const data = await getObjectFromLocalStorage("baekjoonHubDirTemplate");
-    if (data && data.baekjoonHubDirTemplate) {
-      customTemplateInput.value = data.baekjoonHubDirTemplate;
+    const data = await getObjectFromLocalStorage(STORAGE_KEYS.DIR_TEMPLATE);
+    if (data) {
+      customTemplateInput.value = data;
     } else {
       // Set a default custom template if none exists
       customTemplateInput.value = `{{language}}/백준/{{level.replace(/ .*/, '')}}/{{problemId}}. {{title}}`;
       saveObjectInLocalStorage({
-        baekjoonHubDirTemplate: customTemplateInput.value,
+        [STORAGE_KEYS.DIR_TEMPLATE]: customTemplateInput.value,
       });
     }
   } else {
     customTemplateField.style.display = "none";
   }
 
-  saveObjectInLocalStorage({ baekjoonHubOrgOption: orgOption }).then(() => {
+  saveObjectInLocalStorage({ [STORAGE_KEYS.ORG_OPTION]: orgOption }).then(() => {
     console.log(`Set Organize by ${orgOption}`);
   });
 
@@ -509,14 +527,14 @@ const handleOrgOptionChange = async () => {
  * Loads custom template settings.
  */
 const loadCustomTemplateSettings = async () => {
-  const data = (await getObjectFromLocalStorage(["baekjoonHubUseCustomTemplate", "baekjoonHubDirTemplate"])) || {};
+  const data = (await getObjectFromLocalStorage([STORAGE_KEYS.USE_CUSTOM_TEMPLATE, STORAGE_KEYS.DIR_TEMPLATE])) || {};
   const customTemplateField = document.querySelector("#customTemplateField");
-  if (data.baekjoonHubUseCustomTemplate) {
+  if (data[STORAGE_KEYS.USE_CUSTOM_TEMPLATE]) {
     document.querySelector("#use_custom_template").checked = true;
     customTemplateField.style.display = "block";
     customTemplateField.removeAttribute("hidden");
-    if (data.baekjoonHubDirTemplate) {
-      document.querySelector("#customTemplate").value = data.baekjoonHubDirTemplate;
+    if (data[STORAGE_KEYS.DIR_TEMPLATE]) {
+      document.querySelector("#customTemplate").value = data[STORAGE_KEYS.DIR_TEMPLATE];
     }
   }
 };
@@ -545,8 +563,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.querySelector("#org_option").addEventListener("change", handleOrgOptionChange);
 
-  // Finish button (no longer needed as it's automated)
-  // document.querySelector('#finish_setup').addEventListener('click', handleFinishSetupClick);
+  // Finish button
+  document.querySelector("#finish_setup").addEventListener("click", handleFinishSetupClick);
 
   // Unlink buttons
   document.querySelector("#unlink a").addEventListener("click", () => {
@@ -567,14 +585,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const useCustom = this.checked;
       document.querySelector("#customTemplateField").style.display = "block";
       document.querySelector("#customTemplateField").removeAttribute("hidden");
-      saveObjectInLocalStorage({ baekjoonHubUseCustomTemplate: useCustom });
+      saveObjectInLocalStorage({ [STORAGE_KEYS.USE_CUSTOM_TEMPLATE]: useCustom });
     });
   }
 
   const customTemplateInput = document.querySelector("#customTemplate");
   if (customTemplateInput) {
     customTemplateInput.addEventListener("input", function handleCustomTemplateInput() {
-      saveObjectInLocalStorage({ baekjoonHubDirTemplate: this.value });
+      saveObjectInLocalStorage({ [STORAGE_KEYS.DIR_TEMPLATE]: this.value });
     });
   }
 

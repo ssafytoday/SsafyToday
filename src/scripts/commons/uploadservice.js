@@ -1,6 +1,7 @@
 import { GitHub } from "./github.js";
-import { getToken, getHook, getStats, saveStats, updateObjectDatafromPath } from "./storage.js";
+import { getToken, getHook, getStats, saveStats, updateObjectDatafromPath, getGithubUsername } from "./storage.js";
 import { isNull, log } from "./util.js";
+import DjangoAPIService from "./djangoapi.js";
 
 /**
  * 모든 플랫폼에서 공통으로 사용할 수 있는 업로드 서비스 클래스
@@ -35,7 +36,30 @@ export default class UploadService {
 
       // 업로드 전 현재 업로드할 파일의 SHA 값과 비교하여 중복 업로드 방지 로직은 플랫폼별 업로드 함수에서 처리함
 
-      return this.upload(token, hook, code, readme, directory, fileName, message, callback);
+      // GitHub 업로드 수행
+      const result = await this.upload(token, hook, code, readme, directory, fileName, message, callback);
+
+      // GitHub 업로드 성공 시 SSAFY Today 백엔드로도 전송
+      if (result && result.success) {
+        const githubUsername = await getGithubUsername();
+        if (githubUsername) {
+          const djangoResult = await DjangoAPIService.sendSubmission(problemData, githubUsername, {
+            hook,
+            directory,
+            fileName,
+            message,
+          });
+
+          if (!djangoResult.success && !djangoResult.skipped) {
+            log("SSAFY Today API submission failed:", djangoResult.error);
+            // Django 실패는 사용자에게 별도 알림하지 않음 (GitHub 업로드는 성공)
+          } else if (djangoResult.success && !djangoResult.skipped) {
+            log("SSAFY Today API submission successful");
+          }
+        }
+      }
+
+      return result;
     } catch (error) {
       console.error("Error uploading problem:", error);
       throw error; // 오류 위로 전파하여 호출자가 오류 처리할 수 있도록 함

@@ -8,7 +8,10 @@ let isAuthActionAllowed = false;
  * GitHub 인증 흐름을 처리합니다.
  */
 const handleAuthentication = async () => {
+  console.log("[Popup] handleAuthentication called");
+  console.log("[Popup] Storage keys:", { TOKEN: STORAGE_KEYS.TOKEN, MODE_TYPE: STORAGE_KEYS.MODE_TYPE, HOOK: STORAGE_KEYS.HOOK });
   const token = await getObjectFromLocalStorage(STORAGE_KEYS.TOKEN);
+  console.log("[Popup] Token exists:", !!token);
 
   if (token === null || token === undefined) {
     isAuthActionAllowed = true;
@@ -25,16 +28,20 @@ const handleAuthentication = async () => {
       });
 
       if (response.ok) {
-        const data2 = await getObjectFromLocalStorage(STORAGE_KEYS.MODE_TYPE);
-        if (data2 && data2.mode_type === "commit") {
+        console.log("[Popup] GitHub API response OK");
+        const modeType = await getObjectFromLocalStorage(STORAGE_KEYS.MODE_TYPE);
+        console.log("[Popup] modeType loaded:", modeType, "(key:", STORAGE_KEYS.MODE_TYPE, ")");
+        if (modeType === "commit") {
+          console.log("[Popup] Showing commit_mode");
           document.querySelector("#commit_mode").style.display = "block";
           document.querySelector("#commit_mode").removeAttribute("hidden");
-          const data3 = await getObjectFromLocalStorage([STORAGE_KEYS.STATS, STORAGE_KEYS.HOOK]);
-          const { baekjoonHubHook } = data3;
-          if (baekjoonHubHook) {
-            document.querySelector("#repo_url").innerHTML = `Your Repo: <a target='_blank' style='color: cadetblue !important;' href='https://github.com/${baekjoonHubHook}'>${baekjoonHubHook}</a>`;
+          const hook = await getObjectFromLocalStorage(STORAGE_KEYS.HOOK);
+          console.log("[Popup] hook loaded:", hook, "(key:", STORAGE_KEYS.HOOK, ")");
+          if (hook) {
+            document.querySelector("#repo_url").innerHTML = `Your Repo: <a target='_blank' style='color: cadetblue !important;' href='https://github.com/${hook}'>${hook}</a>`;
           }
         } else {
+          console.log("[Popup] Showing hook_mode (modeType is not 'commit')");
           document.querySelector("#hook_mode").style.display = "block";
           document.querySelector("#hook_mode").removeAttribute("hidden");
         }

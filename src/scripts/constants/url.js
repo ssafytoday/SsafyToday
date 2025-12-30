@@ -10,4 +10,6 @@ export default {
   BAEKJOON_PROBLEM_URL: "https://www.acmicpc.net/problem/",
   BAEKJOON_SOURCE_DOWNLOAD_URL: "https://www.acmicpc.net/source/download/",
   BAEKJOON_STATUS_URL: "https://www.acmicpc.net/status",
+  // SSAFY Today API
+  SSAFY_API_DEFAULT_URL: "https://ssafy.today/api/submissions/",
 };

@@ -1,4 +1,5 @@
 import urls from "@/constants/url.js";
+import { STORAGE_KEYS } from "@/constants/registry.js";
 
 /**
  * solvedac 문제 데이터를 파싱해오는 함수.
@@ -13,11 +14,11 @@ export async function SolvedApiCall(problemId) {
 export function handleMessage(request, sender, sendResponse) {
   if (request && request.closeWebPage === true && request.isSuccess === true) {
     /* Set username */
-    chrome.storage.local.set({ BaekjoonHub_username: request.username }, () => {
+    chrome.storage.local.set({ [STORAGE_KEYS.USERNAME]: request.username }, () => {
       /* Set token */
-      chrome.storage.local.set({ BaekjoonHub_token: request.token }, () => {
+      chrome.storage.local.set({ [STORAGE_KEYS.TOKEN]: request.token }, () => {
         /* Close pipe */
-        chrome.storage.local.set({ pipeBaekjoonHub: false }, () => {
+        chrome.storage.local.set({ [STORAGE_KEYS.PIPE]: false }, () => {
           console.log("Closed pipe.");
 
           /* Go to onboarding for UX */
