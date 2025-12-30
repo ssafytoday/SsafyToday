@@ -9,8 +9,7 @@
     "package": "npm run build && node build.js",
     "clean": "rm -rf dist packages node_modules",
     "lint": "eslint src/**/*.js",
-    "prettier": "prettier --write \"**/*.@(cjs|mjs|js|ts|md|json|yml)\"",
-    "test": "node test/settings.test.js"
+    "prettier": "prettier --write \"**/*.@(cjs|mjs|js|ts|md|json|yml)\""
   },
   "engines": {
     "node": ">=20.0.0"
@@ -21,11 +20,11 @@
     "competitive-programming",
     "github-integration"
   ],
-  "author": "flaxinger",
+  "author": "getCurrentThread",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/BaekjoonHub/BaekjoonHub.git"
+    "url": "https://github.com/ssafytoday/SsafyToday.git"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
