@@ -1,6 +1,5 @@
 const path = require("path");
 const CopyPlugin = require("copy-webpack-plugin");
-const { CleanWebpackPlugin } = require("clean-webpack-plugin");
 
 // 모든 스크립트를 일반 JavaScript로 빌드 (ES 모듈 사용하지 않음)
 module.exports = {
@@ -38,8 +37,6 @@ module.exports = {
     extensions: [".js", ".jsx", ".json"],
     alias: {
       sha1: "js-sha1",
-      
-      filesaver: "file-saver",
       "@": path.resolve(__dirname, "src/scripts"),
     },
   },
