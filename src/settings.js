@@ -1,171 +1,348 @@
 import { getObjectFromLocalStorage, saveObjectInLocalStorage } from "@/commons/storage.js";
 import { STORAGE_KEYS } from "@/constants/registry.js";
-
 import beginOAuth2 from "@/commons/oauth2.js";
+import { parseTemplateString } from "safe-template-parser";
+import { getTextTransforms } from "@/commons/text-transforms.js";
 
-// Step navigation
-const steps = ["step_repo_option", "step_repo_name", "step_org_method"];
-let currentStep = 0;
-
-const showStep = (stepId) => {
-  document.querySelectorAll(".step").forEach((step) => {
-    const element = step;
-    if (element) element.style.display = "none";
-  });
-  const element = document.querySelector(`#${stepId}`);
-  if (element) {
-    element.style.display = "block";
-    element.removeAttribute("hidden");
-  }
+// 설정 상태 관리
+let appSettings = {
+  connected: false,
+  repoName: "",
+  autoUpload: true,
+  useCustomTemplate: false,
+  templateString: "{{platform}}/{{language}}/{{removeAfterSpace(level)}}/{{problemId}}. {{safe(title)}}",
 };
 
-const navigateToStep = (stepIndex) => {
-  if (stepIndex >= 0 && stepIndex < steps.length) {
-    currentStep = stepIndex;
-    showStep(steps[currentStep]);
-  }
+// GitHub 사용자 정보 및 저장소 목록
+let githubUserInfo = {
+  username: "",
+  repositories: [],
 };
 
-/**
- * Detects the mode (hook or commit) and sets the UI accordingly.
- */
-const detectAndSetMode = async () => {
-  const data = (await getObjectFromLocalStorage([STORAGE_KEYS.MODE_TYPE, STORAGE_KEYS.HOOK, STORAGE_KEYS.ORG_OPTION, STORAGE_KEYS.TOKEN])) || {};
-  console.log("[Settings] detectAndSetMode - loaded data:", data);
-  console.log("[Settings] Storage keys used:", {
-    MODE_TYPE: STORAGE_KEYS.MODE_TYPE,
-    HOOK: STORAGE_KEYS.HOOK,
-    ORG_OPTION: STORAGE_KEYS.ORG_OPTION,
-    TOKEN: STORAGE_KEYS.TOKEN,
-  });
-  const modeType = data[STORAGE_KEYS.MODE_TYPE];
-  const BaekjoonHubHook = data[STORAGE_KEYS.HOOK];
-  const BaekjoonHubOrgOption = data[STORAGE_KEYS.ORG_OPTION];
-  const BaekjoonHubToken = data[STORAGE_KEYS.TOKEN];
-  console.log("[Settings] Parsed values - modeType:", modeType, "hook:", BaekjoonHubHook, "token exists:", !!BaekjoonHubToken);
+// DOM 요소들
+const elements = {
+  connectionStatus: document.getElementById("connectionStatus"),
+  errorMessage: document.getElementById("errorMessage"),
+  successMessage: document.getElementById("successMessage"),
+  setupSection: document.getElementById("setupSection"),
+  settingsSection: document.getElementById("settingsSection"),
+  ssafyApiSection: document.getElementById("ssafyApiSection"),
+  managementSection: document.getElementById("managementSection"),
+  repoType: document.getElementById("repoType"),
+  repoName: document.getElementById("repoName"),
+  repoSelect: document.getElementById("repoSelect"),
+  connectRepo: document.getElementById("connectRepo"),
+  autoUpload: document.getElementById("autoUpload"),
+  useCustomTemplate: document.getElementById("useCustomTemplate"),
+  customTemplateInput: document.getElementById("customTemplateInput"),
+  templateString: document.getElementById("templateString"),
+  templatePreview: document.getElementById("templatePreview"),
+  unlinkRepo: document.getElementById("unlinkRepo"),
+  saveTemplate: document.getElementById("saveTemplate"),
+  resetTemplate: document.getElementById("resetTemplate"),
+  testApiConnection: document.getElementById("testApiConnection"),
+  apiStatusIcon: document.getElementById("apiStatusIcon"),
+  apiStatusBadge: document.getElementById("apiStatusBadge"),
+};
 
-  if (modeType === "commit" && BaekjoonHubHook) {
-    if (!BaekjoonHubToken) {
-      document.querySelector("#error").innerHTML =
-        'Authorization error - Grant BaekjoonHub access to your GitHub account to continue. <button id="authorize_button" class="button positive">Authorize</button>';
-      document.querySelector("#error").style.display = "block";
-      document.querySelector("#error").removeAttribute("hidden");
-      document.querySelector("#success").style.display = "none";
-      document.querySelector("#hook_mode").style.display = "block";
-      document.querySelector("#hook_mode").removeAttribute("hidden");
-      document.querySelector("#commit_mode").style.display = "none";
-      navigateToStep(0);
-      document.querySelector("#authorize_button").addEventListener("click", beginOAuth2);
+// 유틸리티 함수들
+function showMessage(type, text, autoHide = true) {
+  const messageEl = elements[type + "Message"];
+  if (!messageEl) return;
+
+  messageEl.textContent = text;
+  messageEl.style.display = "block";
+
+  if (autoHide) {
+    setTimeout(() => {
+      messageEl.style.display = "none";
+    }, 5000);
+  }
+}
+
+function hideMessage(type) {
+  const messageEl = elements[type + "Message"];
+  if (messageEl) {
+    messageEl.style.display = "none";
+  }
+}
+
+// 연결 상태 업데이트
+function updateConnectionStatus() {
+  if (appSettings.connected) {
+    elements.connectionStatus.innerHTML = `
+      <div class="status-connected">
+        <a class="repo-info" href="https://github.com/${appSettings.repoName}" target="_blank" title="클릭하여 GitHub 저장소로 이동">
+          <svg viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+          <strong>연결됨:</strong> ${appSettings.repoName}
+        </a>
+      </div>
+    `;
+    elements.setupSection.style.display = "none";
+    elements.settingsSection.style.display = "block";
+    elements.managementSection.style.display = "block";
+  } else {
+    elements.connectionStatus.innerHTML = `
+      <div class="status-disconnected">
+        GitHub 저장소가 연결되지 않았습니다. 아래에서 저장소를 설정해주세요.
+      </div>
+    `;
+    elements.setupSection.style.display = "block";
+    elements.settingsSection.style.display = "none";
+    elements.managementSection.style.display = "none";
+  }
+}
+
+// 모드 감지 및 설정
+async function detectAndSetMode() {
+  try {
+    const data = await getObjectFromLocalStorage([
+      STORAGE_KEYS.MODE_TYPE,
+      STORAGE_KEYS.HOOK,
+      STORAGE_KEYS.TOKEN,
+      STORAGE_KEYS.ENABLE,
+      STORAGE_KEYS.USE_CUSTOM_TEMPLATE,
+      STORAGE_KEYS.DIR_TEMPLATE,
+    ]);
+
+    const modeType = data[STORAGE_KEYS.MODE_TYPE];
+    const hook = data[STORAGE_KEYS.HOOK];
+    const token = data[STORAGE_KEYS.TOKEN];
+    const enabled = data[STORAGE_KEYS.ENABLE];
+    const useCustomTemplate = data[STORAGE_KEYS.USE_CUSTOM_TEMPLATE];
+    const dirTemplate = data[STORAGE_KEYS.DIR_TEMPLATE];
+
+    if (modeType === "commit" && hook) {
+      if (!token) {
+        showAuthorizationError();
+        return;
+      }
+
+      // 연결된 상태
+      appSettings.connected = true;
+      appSettings.repoName = hook;
+      appSettings.autoUpload = enabled !== false;
+      appSettings.useCustomTemplate = useCustomTemplate || false;
+      appSettings.templateString =
+        dirTemplate || "{{platform}}/{{language}}/{{removeAfterSpace(level)}}/{{problemId}}. {{safe(title)}}";
+
+      updateConnectionStatus();
+      updateFormValues();
+    } else {
+      // 연결되지 않은 상태
+      appSettings.connected = false;
+      updateConnectionStatus();
+    }
+  } catch (error) {
+    console.error("Mode detection error:", error);
+    appSettings.connected = false;
+    updateConnectionStatus();
+  }
+}
+
+// 토큰 유효성 확인 함수
+async function checkGitHubToken() {
+  try {
+    const token = await getObjectFromLocalStorage(STORAGE_KEYS.TOKEN);
+
+    if (!token || token.trim() === "") {
+      return null;
+    }
+
+    return token;
+  } catch (error) {
+    console.error("Token check error:", error);
+    return null;
+  }
+}
+
+// GitHub 인증 안내 표시
+function showGitHubAuthRequired() {
+  const authMessage = `
+    <div class="auth-required-notice">
+      <div class="notice-icon">🔐</div>
+      <div class="notice-content">
+        <h3>GitHub 인증이 필요합니다</h3>
+        <p>저장소를 연결하려면 먼저 GitHub 계정 인증을 완료해야 합니다.</p>
+        <button id="authorize_button" class="button button-primary">
+          <span>🔗</span> GitHub 인증하기
+        </button>
+      </div>
+    </div>
+  `;
+
+  elements.errorMessage.innerHTML = authMessage;
+  elements.errorMessage.style.display = "block";
+
+  const authorizeButton = document.getElementById("authorize_button");
+  if (authorizeButton) {
+    authorizeButton.addEventListener("click", () => {
+      hideMessage("error");
+      beginOAuth2();
+    });
+  }
+}
+
+// 인증 오류 표시
+function showAuthorizationError() {
+  elements.errorMessage.innerHTML =
+    'GitHub 계정 인증이 필요합니다. <button id="authorize_button" class="button button-primary">인증하기</button>';
+  elements.errorMessage.style.display = "block";
+
+  const authorizeButton = document.getElementById("authorize_button");
+  if (authorizeButton) {
+    authorizeButton.addEventListener("click", beginOAuth2);
+  }
+}
+
+// 폼 값 업데이트
+function updateFormValues() {
+  if (elements.autoUpload) {
+    elements.autoUpload.checked = appSettings.autoUpload;
+  }
+  if (elements.useCustomTemplate) {
+    elements.useCustomTemplate.checked = appSettings.useCustomTemplate;
+    elements.customTemplateInput.style.display = appSettings.useCustomTemplate ? "block" : "none";
+  }
+  if (elements.templateString) {
+    elements.templateString.value = appSettings.templateString;
+  }
+}
+
+// GitHub 사용자 정보 및 저장소 목록 가져오기
+async function fetchGitHubUserInfo() {
+  try {
+    const data = await getObjectFromLocalStorage([STORAGE_KEYS.TOKEN, STORAGE_KEYS.USERNAME]);
+    const token = data[STORAGE_KEYS.TOKEN];
+    const username = data[STORAGE_KEYS.USERNAME];
+
+    if (!token || !username) {
+      return null;
+    }
+
+    githubUserInfo.username = username;
+
+    const response = await fetch("https://api.github.com/user/repos?per_page=100&sort=updated", {
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    });
+
+    if (response.ok) {
+      const repos = await response.json();
+      githubUserInfo.repositories = repos.map((repo) => ({
+        name: repo.name,
+        fullName: repo.full_name,
+        description: repo.description,
+        private: repo.private,
+      }));
+    }
+
+    return githubUserInfo;
+  } catch (error) {
+    console.error("GitHub user info fetch error:", error);
+    return null;
+  }
+}
+
+// 저장소 선택 드롭다운 업데이트
+function updateRepositorySelect() {
+  if (!elements.repoSelect) return;
+
+  while (elements.repoSelect.options.length > 1) {
+    elements.repoSelect.removeChild(elements.repoSelect.lastChild);
+  }
+
+  githubUserInfo.repositories.forEach((repo) => {
+    const option = document.createElement("option");
+    option.value = repo.fullName;
+    option.textContent = `${repo.name} ${repo.private ? "(비공개)" : ""}`;
+    if (repo.description) {
+      option.textContent += ` - ${repo.description}`;
+    }
+    elements.repoSelect.appendChild(option);
+  });
+}
+
+// 저장소 타입 변경 처리
+async function handleRepoTypeChange() {
+  const repoType = elements.repoType.value;
+
+  if (repoType === "new") {
+    elements.repoName.style.display = "block";
+    elements.repoSelect.style.display = "none";
+
+    const userInfo = await fetchGitHubUserInfo();
+    if (userInfo && userInfo.username) {
+      elements.repoName.value = `${userInfo.username}/algorithm-solutions`;
+    } else {
+      elements.repoName.value = "username/algorithm-solutions";
+    }
+  } else if (repoType === "existing") {
+    const token = await checkGitHubToken();
+    if (!token) {
+      showGitHubAuthRequired();
+      elements.repoType.value = "";
       return;
     }
 
-    document.querySelector("#hook_mode").style.display = "none";
-    document.querySelector("#commit_mode").style.display = "block";
-    document.querySelector("#commit_mode").removeAttribute("hidden");
-    document.querySelector("#current_repo").textContent = BaekjoonHubHook;
-    const orgOptionValue = BaekjoonHubOrgOption || "platform";
-    let orgText;
-    if (orgOptionValue === "platform") {
-      orgText = "By Platform";
-    } else if (orgOptionValue === "language") {
-      orgText = "By Language";
+    elements.repoName.style.display = "none";
+    elements.repoSelect.style.display = "block";
+
+    const userInfo = await fetchGitHubUserInfo();
+    if (userInfo) {
+      updateRepositorySelect();
     } else {
-      orgText = "Custom";
+      showMessage("error", "GitHub 사용자 정보를 가져올 수 없습니다. 다시 로그인해 주세요.");
     }
-    document.querySelector("#current_org").textContent = orgText;
-    if (orgOptionValue !== "custom") {
-      document.querySelector("#customTemplateField").style.display = "none";
-    }
-    document.querySelector("#unlink").style.display = "block";
-    document.querySelector("#unlink").removeAttribute("hidden");
   } else {
-    console.log("Entering hook mode");
-    document.querySelector("#hook_mode").style.display = "block";
-    console.log("hook_mode display set to block");
-    document.querySelector("#hook_mode").removeAttribute("hidden");
-    document.querySelector("#commit_mode").style.display = "none";
-    document.querySelector("#unlink").style.display = "none";
-    navigateToStep(0);
+    elements.repoName.style.display = "none";
+    elements.repoSelect.style.display = "none";
+    elements.repoName.value = "";
+    elements.repoSelect.value = "";
   }
-};
 
-const getOptionType = () => document.querySelector("#type").value;
-const getRepositoryName = () => document.querySelector("#name").value.trim();
-const getOrgOption = () => document.querySelector("#org_option").value;
+  validateForm();
+}
 
-/**
- * Handles the status code from creating a repository and provides feedback to the user.
- * @param {object} res - The response from the GitHub API.
- * @param {number} status - The HTTP status code.
- * @param {string} fullName - The full name of the repository (e.g., username/repo-name).
- */
-const handleCreateRepoStatusCode = (res, status, fullName) => {
-  switch (status) {
-    case 304:
-      document.querySelector("#success").style.display = "none";
-      document.querySelector("#error").textContent = `Error creating ${fullName} - Unable to modify repository. Try again later!`;
-      document.querySelector("#error").style.display = "block";
-      document.querySelector("#error").removeAttribute("hidden");
-      break;
-    case 400:
-      document.querySelector("#success").style.display = "none";
-      document.querySelector("#error").textContent = `Error creating ${fullName} - Bad POST request, make sure you're not overriding any existing scripts`;
-      document.querySelector("#error").style.display = "block";
-      document.querySelector("#error").removeAttribute("hidden");
-      break;
-    case 401:
-      document.querySelector("#success").style.display = "none";
-      document.querySelector("#error").textContent = `Error creating ${fullName} - Unauthorized access to repo. Try again later!`;
-      document.querySelector("#error").style.display = "block";
-      document.querySelector("#error").removeAttribute("hidden");
-      break;
-    case 403:
-      document.querySelector("#success").style.display = "none";
-      document.querySelector("#error").textContent = `Error creating ${fullName} - Forbidden access to repository. Try again later!`;
-      document.querySelector("#error").style.display = "block";
-      document.querySelector("#error").removeAttribute("hidden");
-      break;
-    case 422:
-      document.querySelector("#success").style.display = "none";
-      document.querySelector("#error").textContent = `Error creating ${fullName} - Unprocessable Entity. Repository may have already been created. Try Linking instead (select 2nd option).`;
-      document.querySelector("#error").style.display = "block";
-      document.querySelector("#error").removeAttribute("hidden");
-      break;
-    default:
-      console.log("[Settings] Creating repo - saving mode_type and hook...");
-      saveObjectInLocalStorage({ [STORAGE_KEYS.MODE_TYPE]: "commit" }).then(() => {
-        console.log("[Settings] Saved mode_type:", STORAGE_KEYS.MODE_TYPE, "= commit");
-        document.querySelector("#error").style.display = "none";
-        document.querySelector("#success").innerHTML = `Successfully created <a target='_blank' href='${res.html_url}'>${fullName}</a>. Start <a href='https://www.acmicpc.net/'>BOJ</a>!`;
-        document.querySelector("#success").style.display = "block";
-        document.querySelector("#success").removeAttribute("hidden");
-        document.querySelector("#unlink").style.display = "block";
-        document.querySelector("#unlink").removeAttribute("hidden");
-        document.querySelector("#hook_mode").style.display = "none";
-        document.querySelector("#commit_mode").style.display = "block";
-        document.querySelector("#commit_mode").removeAttribute("hidden");
-        detectAndSetMode(); // Refresh the settings page
-      });
-      saveObjectInLocalStorage({ [STORAGE_KEYS.HOOK]: res.full_name }).then(() => {
-        console.log("[Settings] Saved hook:", STORAGE_KEYS.HOOK, "=", res.full_name);
-      });
-      break;
+// 저장소 선택 처리
+function handleRepoSelect() {
+  const selectedRepo = elements.repoSelect.value;
+  if (selectedRepo) {
+    elements.repoName.value = selectedRepo;
   }
-};
+  validateForm();
+}
 
-/**
- * Creates a new GitHub repository.
- * @param {string} token - The GitHub OAuth token.
- * @param {string} fullName - The full name of the repository to create (e.g., username/repo-name).
- */
-const createRepo = async (token, fullName) => {
+// 폼 유효성 검사
+function validateForm() {
+  const repoType = elements.repoType.value;
+  let repoName = "";
+
+  if (repoType === "new") {
+    repoName = elements.repoName.value;
+  } else if (repoType === "existing") {
+    repoName = elements.repoSelect.value || elements.repoName.value;
+  }
+
+  const isValid = repoType && repoName && repoName.includes("/");
+  elements.connectRepo.disabled = !isValid;
+
+  return isValid;
+}
+
+// 저장소 생성
+async function createRepo(token, fullName) {
   const name = fullName.split("/")[1];
   const AUTHENTICATION_URL = "https://api.github.com/user/repos";
   const data = {
     name,
     private: true,
     auto_init: true,
-    description: "This is an auto push repository for Baekjoon Online Judge created with [BaekjoonHub](https://github.com/BaekjoonHub/BaekjoonHub).",
+    description: "SSAFY TODAY로 자동 업로드되는 알고리즘 풀이 저장소입니다.",
   };
 
   try {
@@ -178,67 +355,46 @@ const createRepo = async (token, fullName) => {
       body: JSON.stringify(data),
     });
     const res = await response.json();
-    handleCreateRepoStatusCode(res, response.status, fullName);
 
-    const stats = {};
-    stats.version = chrome.runtime.getManifest().version;
-    stats.submission = {};
-    saveObjectInLocalStorage({ [STORAGE_KEYS.STATS]: stats });
-    console.log("[Settings] Saved stats:", STORAGE_KEYS.STATS);
+    if (response.status === 201 || response.status === 200) {
+      await saveObjectInLocalStorage({
+        [STORAGE_KEYS.MODE_TYPE]: "commit",
+        [STORAGE_KEYS.HOOK]: res.full_name,
+      });
+
+      const stats = {};
+      stats.version = chrome.runtime.getManifest().version;
+      stats.submission = {};
+      await saveObjectInLocalStorage({ [STORAGE_KEYS.STATS]: stats });
+
+      appSettings.connected = true;
+      appSettings.repoName = res.full_name;
+      updateConnectionStatus();
+      showMessage("success", `저장소 '${res.full_name}'이(가) 생성되었습니다.`);
+    } else {
+      handleCreateRepoError(response.status, fullName);
+    }
   } catch (error) {
-    console.error(error);
-    document.querySelector("#success").style.display = "none";
-    document.querySelector("#error").textContent = "Error creating repository. See console for details.";
-    document.querySelector("#error").style.display = "block";
-    document.querySelector("#error").removeAttribute("hidden");
+    console.error("Repository creation error:", error);
+    showMessage("error", "저장소 생성에 실패했습니다. 콘솔을 확인해주세요.");
   }
-};
+}
 
-/**
- * Handles the status code from linking an existing repository.
- * @param {number} status - The HTTP status code.
- * @param {string} name - The name of the repository.
- * @returns {boolean} - True if the link was successful, false otherwise.
- */
-const handleLinkRepoStatusCode = (status, name) => {
-  let success = false;
-  switch (status) {
-    case 301:
-      document.querySelector("#success").style.display = "none";
-      document.querySelector("#error").innerHTML =
-        `Error linking <a target='_blank' href='https://github.com/${name}'>${name}</a> to BaekjoonHub. <br> This repository has been moved permanently. Try creating a new one.`;
-      document.querySelector("#error").style.display = "block";
-      document.querySelector("#error").removeAttribute("hidden");
-      break;
-    case 403:
-      document.querySelector("#success").style.display = "none";
-      document.querySelector("#error").innerHTML =
-        `Error linking <a target='_blank' href='https://github.com/${name}'>${name}</a> to BaekjoonHub. <br> Forbidden action. Please make sure you have the right access to this repository.`;
-      document.querySelector("#error").style.display = "block";
-      document.querySelector("#error").removeAttribute("hidden");
-      break;
-    case 404:
-      document.querySelector("#success").style.display = "none";
-      document.querySelector("#error").innerHTML =
-        `Error linking <a target='_blank' href='https://github.com/${name}'>${name}</a> to BaekjoonHub. <br> Resource not found. Make sure you enter the right repository name.`;
-      document.querySelector("#error").style.display = "block";
-      document.querySelector("#error").removeAttribute("hidden");
-      break;
-    default:
-      success = true;
-      break;
-  }
-  document.querySelector("#unlink").style.display = "block";
-  document.querySelector("#unlink").removeAttribute("hidden");
-  return success;
-};
+// 저장소 생성 오류 처리
+function handleCreateRepoError(status, fullName) {
+  const errorMessages = {
+    304: `'${fullName}' 저장소를 수정할 수 없습니다. 나중에 다시 시도해주세요.`,
+    400: `잘못된 요청입니다. 기존 스크립트를 덮어쓰고 있지 않은지 확인해주세요.`,
+    401: `'${fullName}'에 대한 접근 권한이 없습니다. 나중에 다시 시도해주세요.`,
+    403: `'${fullName}' 저장소에 대한 접근이 금지되었습니다.`,
+    422: `저장소가 이미 존재할 수 있습니다. '기존 저장소 연결' 옵션을 사용해보세요.`,
+  };
 
-/**
- * Links an existing GitHub repository.
- * @param {string} token - The GitHub OAuth token.
- * @param {string} name - The full name of the repository to link (e.g., username/repo-name).
- */
-const linkRepo = async (token, name) => {
+  showMessage("error", errorMessages[status] || `저장소 생성 중 오류가 발생했습니다 (${status}).`);
+}
+
+// 기존 저장소 연결
+async function linkRepo(token, name) {
   const AUTHENTICATION_URL = `https://api.github.com/repos/${name}`;
 
   try {
@@ -250,352 +406,484 @@ const linkRepo = async (token, name) => {
       },
     });
     const res = await response.json();
-    const success = handleLinkRepoStatusCode(response.status, name);
-    if (response.status === 200 && success) {
-      console.log("[Settings] Linking repo - saving mode_type and hook...");
-      saveObjectInLocalStorage({
+
+    if (response.status === 200) {
+      await saveObjectInLocalStorage({
         [STORAGE_KEYS.MODE_TYPE]: "commit",
-      }).then(() => {
-        console.log("[Settings] Saved mode_type:", STORAGE_KEYS.MODE_TYPE, "= commit");
-        document.querySelector("#error").style.display = "none";
-        document.querySelector("#success").innerHTML =
-          `Successfully linked <a target='_blank' href='${res.html_url}'>${name}</a> to BaekjoonHub. Start <a href='https://www.acmicpc.net/'>BOJ</a> now!`;
-        document.querySelector("#success").style.display = "block";
-        document.querySelector("#success").removeAttribute("hidden");
-        document.querySelector("#unlink").style.display = "block";
-        document.querySelector("#unlink").removeAttribute("hidden");
-        document.querySelector("#hook_mode").style.display = "none";
-        document.querySelector("#commit_mode").style.display = "block";
-        document.querySelector("#commit_mode").removeAttribute("hidden");
-        detectAndSetMode(); // Refresh the settings page
+        [STORAGE_KEYS.HOOK]: res.full_name,
       });
 
       const stats = {};
       stats.version = chrome.runtime.getManifest().version;
       stats.submission = {};
-      saveObjectInLocalStorage({ [STORAGE_KEYS.STATS]: stats });
-      console.log("[Settings] Saved stats:", STORAGE_KEYS.STATS);
+      await saveObjectInLocalStorage({ [STORAGE_KEYS.STATS]: stats });
 
-      saveObjectInLocalStorage({ [STORAGE_KEYS.HOOK]: res.full_name }).then(() => {
-        console.log("[Settings] Saved hook:", STORAGE_KEYS.HOOK, "=", res.full_name);
-      });
+      appSettings.connected = true;
+      appSettings.repoName = res.full_name;
+      updateConnectionStatus();
+      showMessage("success", `저장소 '${res.full_name}'이(가) 연결되었습니다.`);
     } else {
-      document.querySelector("#hook_mode").style.display = "block";
-      document.querySelector("#hook_mode").removeAttribute("hidden");
-      document.querySelector("#commit_mode").style.display = "none";
+      handleLinkRepoError(response.status, name);
     }
   } catch (error) {
-    console.error(error);
-    document.querySelector("#success").style.display = "none";
-    document.querySelector("#error").textContent = "Error linking repository. See console for details.";
-    document.querySelector("#error").style.display = "block";
-    document.querySelector("#error").removeAttribute("hidden");
+    console.error("Repository linking error:", error);
+    showMessage("error", "저장소 연결에 실패했습니다. 콘솔을 확인해주세요.");
   }
-};
+}
 
-/**
- * Unlinks the currently connected repository.
- */
-const unlinkRepo = () => {
-  saveObjectInLocalStorage({
-    [STORAGE_KEYS.MODE_TYPE]: "hook",
-    [STORAGE_KEYS.HOOK]: null,
-    [STORAGE_KEYS.ORG_OPTION]: "platform",
-  }).then(() => {
-    console.log("Unlinking repo and resetting options.");
-    document.querySelector("#commit_mode").style.display = "none";
-    document.querySelector("#hook_mode").style.display = "block";
-    document.querySelector("#hook_mode").removeAttribute("hidden");
-    navigateToStep(0); // Go back to the first step
-  });
-};
+// 저장소 연결 오류 처리
+function handleLinkRepoError(status, name) {
+  const errorMessages = {
+    301: `'${name}' 저장소가 영구적으로 이동되었습니다. 새 저장소를 생성해주세요.`,
+    403: `'${name}' 저장소에 대한 접근 권한이 없습니다.`,
+    404: `'${name}' 저장소를 찾을 수 없습니다. 저장소 이름을 확인해주세요.`,
+  };
 
-/**
- * Fetches the user's repositories from GitHub.
- * @param {string} token - The GitHub OAuth token.
- * @returns {Promise<Array<object>>} - A promise that resolves to a list of repositories.
- */
-const fetchUserRepositories = async (token) => {
-  const REPOS_URL = `https://api.github.com/user/repos?per_page=100`;
-  const response = await fetch(REPOS_URL, {
-    headers: {
-      Authorization: `token ${token}`,
-      Accept: "application/vnd.github.v3+json",
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch repositories: ${response.status}`);
-  }
-  const repos = await response.json();
-  repos.sort((a, b) => a.name.localeCompare(b.name));
-  return repos;
-};
+  showMessage("error", errorMessages[status] || `저장소 연결 중 오류가 발생했습니다 (${status}).`);
+}
 
-/**
- * Creates a dropdown menu for repository selection.
- * @param {Array<object>} repositories - The list of repositories.
- */
-const createRepoDropdown = (repositories) => {
-  const select = document.createElement("select");
-  select.id = "name";
-
-  const defaultOption = document.createElement("option");
-  defaultOption.value = "";
-  defaultOption.textContent = "Select a Repository";
-  select.appendChild(defaultOption);
-
-  repositories.forEach((repo) => {
-    const option = document.createElement("option");
-    option.value = `${repo.owner.login}/${repo.name}`;
-    option.textContent = `${repo.owner.login}/${repo.name} ${repo.private ? "(Private)" : "(Public)"}`;
-    select.appendChild(option);
-  });
-
-  const repoNameField = document.querySelector("#step_repo_name .field");
-  repoNameField.innerHTML = '<label for="name">Full Repository Name</label>';
-  repoNameField.appendChild(select);
-  // Re-add event listener for the new select element
-  select.addEventListener("change", () => {
-    if (getRepositoryName() !== "") {
-      navigateToStep(2);
-    }
-  });
-};
-
-/**
- * Prefills the text input with the username.
- * @param {string} username - The GitHub username.
- */
-const prefillTextInput = (username) => {
-  const repoNameField = document.querySelector("#step_repo_name .field");
-  repoNameField.innerHTML = `<label for="name">Full Repository Name</label><input autocomplete="off" id="name" placeholder="${username}/repository-name" value="${username}/" type="text" />`;
-  // Re-add event listener for the new input element
-  document.querySelector("#name").addEventListener("input", () => {
-    const repoName = getRepositoryName();
-    const selectedOption = getOptionType();
-    const isValid = repoName !== "" && (selectedOption !== "new" || repoName.includes("/"));
-    if (isValid) {
-      navigateToStep(2);
-    }
-  });
-};
-
-/**
- * Handles changes to the repository type selection.
- */
-const handleRepoTypeChange = async function handleRepoTypeChange() {
-  const valueSelected = this.value;
-  document.querySelector("#next_to_repo_name").disabled = !valueSelected; // This button will be removed later
-
-  if (valueSelected === "link") {
-    const data = await getObjectFromLocalStorage([STORAGE_KEYS.TOKEN, STORAGE_KEYS.USERNAME]);
-    const token = data[STORAGE_KEYS.TOKEN];
-    const username = data[STORAGE_KEYS.USERNAME];
-
-    if (token && username) {
-      document.querySelector("#success").textContent = "Fetching your repositories... Please wait.";
-      document.querySelector("#success").style.display = "block";
-      document.querySelector("#success").removeAttribute("hidden");
-      document.querySelector("#error").style.display = "none";
-
-      try {
-        const repos = await fetchUserRepositories(token);
-        document.querySelector("#success").style.display = "none";
-        createRepoDropdown(repos);
-        navigateToStep(1); // Move to step 2 after dropdown is created
-      } catch (error) {
-        document.querySelector("#success").style.display = "none";
-        document.querySelector("#error").textContent = `Error fetching repositories: ${error.message}`;
-        document.querySelector("#error").style.display = "block";
-        document.querySelector("#error").removeAttribute("hidden");
-      }
-    } else {
-      document.querySelector("#error").innerHTML =
-        'Authorization error - Grant BaekjoonHub access to your GitHub account to continue. <button id="authorize_button" class="button positive">Authorize</button>';
-      document.querySelector("#error").style.display = "block";
-      document.querySelector("#error").removeAttribute("hidden");
-      document.querySelector("#success").style.display = "none";
-      document.querySelector("#authorize_button").addEventListener("click", beginOAuth2);
-    }
-  } else if (valueSelected === "new") {
-    const data = await getObjectFromLocalStorage([STORAGE_KEYS.USERNAME]);
-    const username = data[STORAGE_KEYS.USERNAME];
-    if (username) {
-      prefillTextInput(username);
-    } else {
-      const repoNameField = document.querySelector("#step_repo_name .field");
-      repoNameField.innerHTML = '<label for="name">Full Repository Name</label><input autocomplete="off" id="name" placeholder="username/repository-name" type="text" />';
-      // Add event listener for the new input element
-      document.querySelector("#name").addEventListener("input", () => {
-        const repoName = getRepositoryName();
-        const selectedOption = getOptionType();
-        const isValid = repoName !== "" && (selectedOption !== "new" || repoName.includes("/"));
-        if (isValid) {
-          navigateToStep(2);
-        }
-      });
-    }
-    navigateToStep(1); // Move to step 2 after text input is created
-  }
-};
-
-/**
- * Handles the final setup button click.
- */
-const handleFinishSetupClick = async () => {
-  const selectedOption = getOptionType();
-  const repoName = getRepositoryName();
-
-  if (!repoName) {
-    document.querySelector("#error").textContent = "No repository entered - Please enter a repository in 'username/repository-name' format!";
-    document.querySelector("#error").style.display = "block";
-    document.querySelector("#error").removeAttribute("hidden");
-    navigateToStep(1); // Go back to repo name step
-    document.querySelector("#name").focus();
-    return;
-  }
-  if (selectedOption === "new" && !repoName.includes("/")) {
-    document.querySelector("#error").textContent = "Invalid repository format - Please use 'username/repository-name' format!";
-    document.querySelector("#error").style.display = "block";
-    document.querySelector("#error").removeAttribute("hidden");
-    navigateToStep(1); // Go back to repo name step
-    document.querySelector("#name").focus();
-    return;
-  }
-
-  document.querySelector("#error").style.display = "none";
-  document.querySelector("#success").textContent = "Attempting to create Hook... Please wait.";
-  document.querySelector("#success").style.display = "block";
-  document.querySelector("#success").removeAttribute("hidden");
-
-  const token = await getObjectFromLocalStorage(STORAGE_KEYS.TOKEN);
+// 저장소 연결 처리
+async function handleRepoConnection() {
+  const token = await checkGitHubToken();
   if (!token) {
-    document.querySelector("#error").innerHTML =
-      'Authorization error - Grant BaekjoonHub access to your GitHub account to continue. <button id="authorize_button" class="button positive">Authorize</button>';
-    document.querySelector("#error").style.display = "block";
-    document.querySelector("#error").removeAttribute("hidden");
-    document.querySelector("#success").style.display = "none";
-    document.querySelector("#authorize_button").addEventListener("click", beginOAuth2);
+    showGitHubAuthRequired();
     return;
   }
 
-  if (selectedOption === "new") {
-    createRepo(token, repoName);
-  } else {
-    linkRepo(token, repoName);
+  if (!validateForm()) {
+    showMessage("error", "모든 필드를 올바르게 입력해주세요.");
+    return;
   }
 
-  const orgOption = getOrgOption();
-  saveObjectInLocalStorage({ [STORAGE_KEYS.ORG_OPTION]: orgOption }).then(() => {
-    console.log(`Set Organize by ${orgOption}`);
-  });
-};
+  const repoType = elements.repoType.value;
+  let repoName = "";
 
-/**
- * Handles changes to the organization method selection.
- */
-const handleOrgOptionChange = async () => {
-  const orgOption = await getOrgOption(); // Await the promise
-  const customTemplateField = document.querySelector("#customTemplateField");
-  const customTemplateInput = document.querySelector("#customTemplate");
+  if (repoType === "new") {
+    repoName = elements.repoName.value;
+  } else if (repoType === "existing") {
+    repoName = elements.repoSelect.value || elements.repoName.value;
+  }
 
-  if (orgOption === "custom") {
-    customTemplateField.style.display = "block";
-    customTemplateField.removeAttribute("hidden");
-    const data = await getObjectFromLocalStorage(STORAGE_KEYS.DIR_TEMPLATE);
-    if (data) {
-      customTemplateInput.value = data;
+  try {
+    hideMessage("error");
+    elements.connectRepo.disabled = true;
+    elements.connectRepo.innerHTML = "<span>⏳</span> 연결 중...";
+
+    if (repoType === "new") {
+      await createRepo(token, repoName);
     } else {
-      // Set a default custom template if none exists
-      customTemplateInput.value = `{{language}}/백준/{{level.replace(/ .*/, '')}}/{{problemId}}. {{title}}`;
-      saveObjectInLocalStorage({
-        [STORAGE_KEYS.DIR_TEMPLATE]: customTemplateInput.value,
+      await linkRepo(token, repoName);
+    }
+  } catch (error) {
+    console.error("Repository connection error:", error);
+    showMessage("error", "저장소 연결에 실패했습니다. 다시 시도해주세요.");
+  } finally {
+    elements.connectRepo.disabled = false;
+    elements.connectRepo.innerHTML = "<span>🔗</span> 연결하기";
+  }
+}
+
+// 저장소 연결 해제
+async function handleRepoDisconnection() {
+  if (!confirm("정말로 저장소 연결을 해제하시겠습니까?")) {
+    return;
+  }
+
+  try {
+    await saveObjectInLocalStorage({
+      [STORAGE_KEYS.MODE_TYPE]: "",
+      [STORAGE_KEYS.HOOK]: "",
+      [STORAGE_KEYS.TOKEN]: "",
+      [STORAGE_KEYS.USERNAME]: "",
+      [STORAGE_KEYS.ORG_OPTION]: "",
+    });
+
+    appSettings.connected = false;
+    appSettings.repoName = "";
+
+    updateConnectionStatus();
+    showMessage("success", "저장소 연결이 해제되었습니다.");
+  } catch (error) {
+    console.error("Disconnection error:", error);
+    showMessage("error", "연결 해제에 실패했습니다.");
+  }
+}
+
+// 설정 저장
+async function saveSettings() {
+  try {
+    await saveObjectInLocalStorage({
+      [STORAGE_KEYS.ENABLE]: appSettings.autoUpload,
+      [STORAGE_KEYS.USE_CUSTOM_TEMPLATE]: appSettings.useCustomTemplate,
+      [STORAGE_KEYS.DIR_TEMPLATE]: appSettings.templateString,
+    });
+  } catch (error) {
+    console.error("Settings save error:", error);
+  }
+}
+
+// SSAFY API 상태 확인
+async function checkSsafyApiStatus() {
+  updateApiStatusUI("checking");
+
+  try {
+    const response = await fetch("https://ssafy.today/api/submissions/health/", {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (response.ok) {
+      updateApiStatusUI("connected");
+    } else {
+      updateApiStatusUI("disconnected");
+    }
+  } catch (error) {
+    console.error("SSAFY API check error:", error);
+    updateApiStatusUI("disconnected");
+  }
+}
+
+// API 상태 UI 업데이트
+function updateApiStatusUI(status) {
+  const statusConfig = {
+    checking: {
+      icon: "🔄",
+      badge: "연결 확인 중...",
+      badgeClass: "checking",
+    },
+    connected: {
+      icon: "✅",
+      badge: "연결됨",
+      badgeClass: "connected",
+    },
+    disconnected: {
+      icon: "❌",
+      badge: "연결 안됨",
+      badgeClass: "disconnected",
+    },
+  };
+
+  const config = statusConfig[status];
+  if (elements.apiStatusIcon) {
+    elements.apiStatusIcon.textContent = config.icon;
+  }
+  if (elements.apiStatusBadge) {
+    elements.apiStatusBadge.textContent = config.badge;
+    elements.apiStatusBadge.className = `api-status-badge ${config.badgeClass}`;
+  }
+}
+
+// 이벤트 리스너 등록
+function setupEventListeners() {
+  // 저장소 타입 변경
+  if (elements.repoType) {
+    elements.repoType.addEventListener("change", handleRepoTypeChange);
+  }
+
+  // 저장소 선택
+  if (elements.repoSelect) {
+    elements.repoSelect.addEventListener("change", handleRepoSelect);
+  }
+
+  // 폼 유효성 검사
+  if (elements.repoName) {
+    elements.repoName.addEventListener("input", validateForm);
+  }
+
+  // 저장소 연결/해제
+  if (elements.connectRepo) {
+    elements.connectRepo.addEventListener("click", handleRepoConnection);
+  }
+  if (elements.unlinkRepo) {
+    elements.unlinkRepo.addEventListener("click", handleRepoDisconnection);
+  }
+
+  // 설정 변경
+  if (elements.autoUpload) {
+    elements.autoUpload.addEventListener("change", async (e) => {
+      appSettings.autoUpload = e.target.checked;
+      await saveSettings();
+    });
+  }
+
+  if (elements.useCustomTemplate) {
+    elements.useCustomTemplate.addEventListener("change", async (e) => {
+      appSettings.useCustomTemplate = e.target.checked;
+      elements.customTemplateInput.style.display = e.target.checked ? "block" : "none";
+      await saveSettings();
+    });
+  }
+
+  if (elements.templateString) {
+    elements.templateString.addEventListener("input", async (e) => {
+      appSettings.templateString = e.target.value;
+    });
+  }
+
+  // SSAFY API 연결 테스트
+  if (elements.testApiConnection) {
+    elements.testApiConnection.addEventListener("click", checkSsafyApiStatus);
+  }
+}
+
+// 툴팁 관리 클래스
+class TooltipManager {
+  constructor() {
+    this.tooltip = null;
+    this.init();
+  }
+
+  init() {
+    this.tooltip = document.createElement("div");
+    this.tooltip.className = "tooltip";
+    document.body.appendChild(this.tooltip);
+    this.attachEventListeners();
+  }
+
+  attachEventListeners() {
+    const elementsWithTooltip = document.querySelectorAll("[data-tooltip]");
+
+    elementsWithTooltip.forEach((element) => {
+      element.addEventListener("mouseenter", (e) => {
+        this.showTooltip(e.target);
+      });
+
+      element.addEventListener("mouseleave", () => {
+        this.hideTooltip();
+      });
+
+      element.addEventListener("mousemove", (e) => {
+        this.updateTooltipPosition(e);
+      });
+    });
+  }
+
+  showTooltip(element) {
+    const tooltipText = element.getAttribute("data-tooltip");
+    if (!tooltipText) return;
+
+    this.tooltip.textContent = tooltipText;
+    this.tooltip.classList.add("show");
+  }
+
+  hideTooltip() {
+    this.tooltip.classList.remove("show");
+  }
+
+  updateTooltipPosition(event) {
+    const tooltipRect = this.tooltip.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+
+    let left = event.pageX - tooltipRect.width / 2;
+    let top = event.pageY - tooltipRect.height - 10;
+
+    if (left < 0) {
+      left = 5;
+    }
+    if (left + tooltipRect.width > viewportWidth) {
+      left = viewportWidth - tooltipRect.width - 5;
+    }
+    if (top < 0) {
+      top = event.pageY + 10;
+    }
+
+    this.tooltip.style.left = left + "px";
+    this.tooltip.style.top = top + "px";
+  }
+
+  refresh() {
+    this.attachEventListeners();
+  }
+}
+
+// 템플릿 빌더 클래스
+class TemplateBuilder {
+  constructor() {
+    this.templateInput = document.getElementById("templateString");
+    this.templatePreview = document.getElementById("templatePreview");
+    this.presetCards = document.querySelectorAll(".preset-card");
+    this.variableBtns = document.querySelectorAll(".variable-btn");
+    this.filterBtns = document.querySelectorAll(".filter-btn");
+    this.saveBtn = document.getElementById("saveTemplate");
+    this.resetBtn = document.getElementById("resetTemplate");
+
+    this.init();
+  }
+
+  init() {
+    // 프리셋 카드 클릭 이벤트
+    this.presetCards.forEach((card) => {
+      card.addEventListener("click", () => {
+        this.selectPreset(card);
+      });
+    });
+
+    // 변수 버튼 클릭 이벤트
+    this.variableBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        this.insertVariable(btn.dataset.variable);
+      });
+    });
+
+    // 필터 버튼 클릭 이벤트
+    this.filterBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        this.insertFunction(btn.dataset.function);
+      });
+    });
+
+    // 템플릿 입력 실시간 업데이트
+    if (this.templateInput) {
+      this.templateInput.addEventListener("input", () => {
+        this.updatePreview();
       });
     }
-  } else {
-    customTemplateField.style.display = "none";
+
+    // 저장 버튼 이벤트
+    if (this.saveBtn) {
+      this.saveBtn.addEventListener("click", () => {
+        this.saveTemplate();
+      });
+    }
+
+    // 초기화 버튼 이벤트
+    if (this.resetBtn) {
+      this.resetBtn.addEventListener("click", () => {
+        this.resetTemplate();
+      });
+    }
+
+    // 초기 미리보기 업데이트
+    this.updatePreview();
   }
 
-  saveObjectInLocalStorage({ [STORAGE_KEYS.ORG_OPTION]: orgOption }).then(() => {
-    console.log(`Set Organize by ${orgOption}`);
-  });
+  selectPreset(selectedCard) {
+    this.presetCards.forEach((card) => card.classList.remove("selected"));
+    selectedCard.classList.add("selected");
 
-  handleFinishSetupClick();
-};
-
-/**
- * Loads custom template settings.
- */
-const loadCustomTemplateSettings = async () => {
-  const data = (await getObjectFromLocalStorage([STORAGE_KEYS.USE_CUSTOM_TEMPLATE, STORAGE_KEYS.DIR_TEMPLATE])) || {};
-  const customTemplateField = document.querySelector("#customTemplateField");
-  if (data[STORAGE_KEYS.USE_CUSTOM_TEMPLATE]) {
-    document.querySelector("#use_custom_template").checked = true;
-    customTemplateField.style.display = "block";
-    customTemplateField.removeAttribute("hidden");
-    if (data[STORAGE_KEYS.DIR_TEMPLATE]) {
-      document.querySelector("#customTemplate").value = data[STORAGE_KEYS.DIR_TEMPLATE];
+    const template = selectedCard.dataset.template;
+    if (this.templateInput) {
+      this.templateInput.value = template;
+      this.updatePreview();
     }
   }
-};
 
-// DOMContentLoaded event listener
-document.addEventListener("DOMContentLoaded", () => {
-  // Navigation listeners
-  // document.querySelector('#next_to_repo_name').addEventListener('click', () => navigateToStep(1)); // Removed as navigation is now automatic
-  document.querySelector("#back_to_repo_option").addEventListener("click", () => navigateToStep(0));
-  document.querySelector("#next_to_org_method").addEventListener("click", () => navigateToStep(2));
-  document.querySelector("#back_to_repo_name").addEventListener("click", () => navigateToStep(1));
+  insertVariable(variable) {
+    if (!this.templateInput) return;
 
-  // Step 1: Repo Option
-  document.querySelector("#type").addEventListener("change", handleRepoTypeChange);
+    const cursorPos = this.templateInput.selectionStart;
+    const currentValue = this.templateInput.value;
+    const newValue = currentValue.slice(0, cursorPos) + variable + currentValue.slice(cursorPos);
 
-  // Step 2: Repo Name (initial setup for validation)
-  document.querySelector("#name").addEventListener("input", () => {
-    const repoName = getRepositoryName();
-    const selectedOption = getOptionType();
-    const isValid = repoName !== "" && (selectedOption !== "new" || repoName.includes("/"));
-    document.querySelector("#next_to_org_method").disabled = !isValid;
-    if (isValid) {
-      navigateToStep(2);
+    this.templateInput.value = newValue;
+
+    const newCursorPos = cursorPos + variable.length;
+    this.templateInput.setSelectionRange(newCursorPos, newCursorPos);
+    this.templateInput.focus();
+
+    this.updatePreview();
+  }
+
+  insertFunction(functionName) {
+    if (!this.templateInput) return;
+
+    const cursorPos = this.templateInput.selectionStart;
+    const currentValue = this.templateInput.value;
+    const newValue = currentValue.slice(0, cursorPos) + functionName + "()" + currentValue.slice(cursorPos);
+
+    this.templateInput.value = newValue;
+
+    const newCursorPos = cursorPos + functionName.length + 1;
+    this.templateInput.setSelectionRange(newCursorPos, newCursorPos);
+    this.templateInput.focus();
+
+    this.updatePreview();
+  }
+
+  updatePreview() {
+    if (!this.templateInput || !this.templatePreview) return;
+
+    const template =
+      this.templateInput.value || "{{platform}}/{{language}}/{{removeAfterSpace(level)}}/{{problemId}}. {{safe(title)}}";
+
+    try {
+      // 예시 데이터 (다양한 플랫폼 지원)
+      const sampleData = {
+        platform: "백준",
+        problemId: "1000",
+        title: "A+B",
+        level: "Silver V",
+        language: "Python",
+      };
+
+      const result = parseTemplateString(template, sampleData, getTextTransforms());
+      const finalResult = result.includes(".") ? result : result + ".py";
+
+      this.templatePreview.textContent = finalResult;
+      this.templatePreview.style.color = "#fbb6ce";
+    } catch (error) {
+      console.error("Template parsing error:", error);
+      this.templatePreview.textContent = "템플릿 구문 오류: " + error.message;
+      this.templatePreview.style.color = "#f56565";
     }
-  });
-
-  document.querySelector("#org_option").addEventListener("change", handleOrgOptionChange);
-
-  // Finish button
-  document.querySelector("#finish_setup").addEventListener("click", handleFinishSetupClick);
-
-  // Unlink buttons
-  document.querySelector("#unlink a").addEventListener("click", () => {
-    unlinkRepo();
-    document.querySelector("#success").textContent = "Successfully unlinked your current git repo. Please create/link a new hook.";
-  });
-  document.querySelector("#unlinkButton")?.addEventListener("click", () => {
-    unlinkRepo();
-    document.querySelector("#success").textContent = "Successfully unlinked your current git repo. Please create/link a new hook.";
-    document.querySelector("#success").style.display = "block";
-    document.querySelector("#success").removeAttribute("hidden");
-  });
-
-  // Settings in commit_mode
-  const useCustomTemplateCheckbox = document.querySelector("#use_custom_template");
-  if (useCustomTemplateCheckbox) {
-    useCustomTemplateCheckbox.addEventListener("change", function handleUseCustomTemplateChange() {
-      const useCustom = this.checked;
-      document.querySelector("#customTemplateField").style.display = "block";
-      document.querySelector("#customTemplateField").removeAttribute("hidden");
-      saveObjectInLocalStorage({ [STORAGE_KEYS.USE_CUSTOM_TEMPLATE]: useCustom });
-    });
   }
 
-  const customTemplateInput = document.querySelector("#customTemplate");
-  if (customTemplateInput) {
-    customTemplateInput.addEventListener("input", function handleCustomTemplateInput() {
-      saveObjectInLocalStorage({ [STORAGE_KEYS.DIR_TEMPLATE]: this.value });
-    });
+  async saveTemplate() {
+    try {
+      const templateString = this.templateInput.value;
+      appSettings.templateString = templateString;
+
+      await saveObjectInLocalStorage({
+        [STORAGE_KEYS.DIR_TEMPLATE]: templateString,
+      });
+
+      showMessage("success", "템플릿이 저장되었습니다.");
+    } catch (error) {
+      console.error("Template save error:", error);
+      showMessage("error", "템플릿 저장에 실패했습니다.");
+    }
   }
 
-  loadCustomTemplateSettings();
-  detectAndSetMode();
-});
+  resetTemplate() {
+    const defaultTemplate = "{{platform}}/{{language}}/{{removeAfterSpace(level)}}/{{problemId}}. {{safe(title)}}";
+
+    if (this.templateInput) {
+      this.templateInput.value = defaultTemplate;
+      this.updatePreview();
+    }
+
+    this.presetCards.forEach((card) => card.classList.remove("selected"));
+    showMessage("success", "템플릿이 초기화되었습니다.");
+  }
+}
+
+// 앱 초기화
+async function init() {
+  console.log("SSAFY TODAY Settings initialized");
+
+  try {
+    await detectAndSetMode();
+    setupEventListeners();
+    validateForm();
+
+    // 툴팁 매니저 초기화
+    new TooltipManager();
+
+    // 템플릿 빌더 초기화
+    new TemplateBuilder();
+
+    // SSAFY API 상태 확인
+    checkSsafyApiStatus();
+  } catch (error) {
+    console.error("Initialization error:", error);
+  }
+}
+
+// DOM이 로드되면 초기화
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}
