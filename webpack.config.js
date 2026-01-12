@@ -1,43 +1,54 @@
-const path = require("path");
-const CopyPlugin = require("copy-webpack-plugin");
+const path = require('path');
+const CopyPlugin = require('copy-webpack-plugin');
 
-// 모든 스크립트를 일반 JavaScript로 빌드 (ES 모듈 사용하지 않음)
+// TypeScript 빌드 설정
 module.exports = {
-  mode: "production",
+  mode: 'production',
   // Set devtool to false for production to avoid eval() usage
   devtool: false,
   entry: {
-    background: "./src/scripts/commons/background.js",
-    authorize: "./src/scripts/commons/authorize.js",
-    baekjoon: "./src/scripts/baekjoon/baekjoon.js",
-    programmers: "./src/scripts/programmers/programmers.js",
-    swexpertacademy: "./src/scripts/swexpertacademy/swexpertacademy.js",
-    goormlevel: "./src/scripts/goormlevel/goormlevel.js",
-    oauth2: "./src/scripts/commons/oauth2.js",
-    popup: "./src/popup.js",
-    settings: "./src/settings.js",
+    background: './src/scripts/commons/background.ts',
+    authorize: './src/scripts/commons/authorize.ts',
+    baekjoon: './src/scripts/baekjoon/baekjoon.ts',
+    programmers: './src/scripts/programmers/programmers.ts',
+    swexpertacademy: './src/scripts/swexpertacademy/swexpertacademy.ts',
+    goormlevel: './src/scripts/goormlevel/goormlevel.ts',
+    oauth2: './src/scripts/commons/oauth2.ts',
+    popup: './src/popup.ts',
+    settings: './src/settings.ts',
+    ssafytoday: './src/scripts/ssafytoday/ssafytoday.ts',
   },
   output: {
-    path: path.resolve(__dirname, "dist"),
-    filename: "[name].js",
+    path: path.resolve(__dirname, 'dist'),
+    filename: '[name].js',
+  },
+  module: {
+    rules: [
+      {
+        test: /\.tsx?$/,
+        use: 'ts-loader',
+        exclude: /node_modules/,
+      },
+    ],
   },
   plugins: [
     new CopyPlugin({
       patterns: [
-        { from: "./src/manifest.json", to: "./" },
-        { from: "./src/rules.json", to: "./" },
-        { from: "./src/assets", to: "./assets" },
-        { from: "./src/css", to: "./css" },
-        { from: "./src/popup.html", to: "./" },
-        { from: "./src/settings.html", to: "./" },
+        { from: './src/manifest.json', to: './' },
+        { from: './src/rules.json', to: './' },
+        { from: './src/assets', to: './assets' },
+        { from: './src/css', to: './css' },
+        { from: './src/popup.html', to: './' },
+        { from: './src/settings.html', to: './' },
       ],
     }),
   ],
   resolve: {
-    extensions: [".js", ".jsx", ".json"],
+    extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
     alias: {
-      sha1: "js-sha1",
-      "@": path.resolve(__dirname, "src/scripts"),
+      sha1: 'js-sha1',
+      '@': path.resolve(__dirname, 'src/scripts'),
+      '@types': path.resolve(__dirname, 'src/types/index'),
     },
   },
 };

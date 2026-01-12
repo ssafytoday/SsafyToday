@@ -4,10 +4,14 @@
   "description": "Chrome extension that automatically pushes your code to GitHub from competitive programming platforms",
   "main": "index.js",
   "scripts": {
-    "build": "webpack --config webpack.config.js",
-    "dev": "webpack --watch --config webpack.config.js",
+    "build": "webpack --mode production --config webpack.config.js",
+    "dev": "webpack --mode development --watch --config webpack.config.js",
     "package": "npm run build && node build.js",
-    "clean": "rm -rf dist packages node_modules"
+    "clean": "rm -rf dist packages node_modules",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "format": "prettier --write \"src/**/*.ts\""
   },
   "engines": {
     "node": ">=20.0.0"
@@ -25,7 +29,18 @@
     "url": "https://github.com/ssafytoday/SsafyToday.git"
   },
   "devDependencies": {
+    "@types/chrome": "^0.1.33",
+    "@typescript-eslint/eslint-plugin": "^8.52.0",
+    "@typescript-eslint/parser": "^8.52.0",
     "copy-webpack-plugin": "^13.0.0",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "globals": "^17.0.0",
+    "prettier": "^3.7.4",
+    "ts-loader": "^9.5.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.52.0",
     "webpack": "^5.101.0",
     "webpack-cli": "^6.0.1"
   },
