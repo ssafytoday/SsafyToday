@@ -14,4 +14,11 @@ export const STORAGE_KEYS = {
   // SSAFY Today API 설정
   SSAFY_API_URL: "ssafytoday_api_url",
   SSAFY_ENABLED: "ssafytoday_enabled",
+  // Platform usernames for registration
+  PLATFORM_BAEKJOON_USERNAME: "ssafytoday_baekjoon_username",
+  PLATFORM_PROGRAMMERS_USERNAME: "ssafytoday_programmers_username",
+  PLATFORM_SWEA_NICKNAME: "ssafytoday_swea_nickname",
+  // Capture mode for registration
+  CAPTURE_MODE: "ssafytoday_capture_mode",
+  CAPTURE_PLATFORM: "ssafytoday_capture_platform",
 };

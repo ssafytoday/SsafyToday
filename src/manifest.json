@@ -113,6 +113,15 @@
         "goormlevel.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://ssafy.today/*"
+      ],
+      "js": [
+        "ssafytoday.js"
+      ],
+      "run_at": "document_idle"
     }
   ]
 }

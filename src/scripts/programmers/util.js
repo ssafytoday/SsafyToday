@@ -30,3 +30,50 @@ export function markUploadedCSS(branches, directory) {
 export function markUploadFailedCSS() {
   markFailed(uploadState);
 }
+
+/**
+ * 로그인한 유저의 사용자명을 가져옵니다.
+ * @returns {string} 유저 사용자명이며 없을 시에 빈 문자열을 반환
+ */
+export function getUsername() {
+  // Programmers shows username in various places
+  // Try header area first
+  const headerUsername = document.querySelector(".header-user-name") ||
+                         document.querySelector("[data-testid='header-user-name']") ||
+                         document.querySelector(".gnb-profile .name") ||
+                         document.querySelector(".user-profile .nickname");
+
+  if (headerUsername) {
+    return headerUsername.textContent.trim();
+  }
+
+  // Try navigation area
+  const navUsername = document.querySelector(".nav-user-name") ||
+                      document.querySelector(".sc-user-name");
+
+  if (navUsername) {
+    return navUsername.textContent.trim();
+  }
+
+  // Try localStorage user info
+  try {
+    const userInfo = localStorage.getItem("user") || localStorage.getItem("currentUser");
+    if (userInfo) {
+      const parsed = JSON.parse(userInfo);
+      return parsed.nickname || parsed.name || parsed.username || "";
+    }
+  } catch (e) {
+    console.log("[SsafyToday] Could not parse user info from localStorage");
+  }
+
+  // Try to get from profile link
+  const profileLink = document.querySelector('a[href*="/users/"]');
+  if (profileLink) {
+    const match = profileLink.href.match(/\/users\/([^\/\?]+)/);
+    if (match) {
+      return match[1];
+    }
+  }
+
+  return "";
+}
