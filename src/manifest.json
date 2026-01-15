@@ -4,7 +4,7 @@
   "name": "SsafyToday",
   "description": "SSAFY 교육생을 위한 코딩 풀이 자동 동기화 확장 프로그램",
   "homepage_url": "https://ssafy.today",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "author": "SsafyToday",
   "action": {
     "default_icon": "assets/thumbnail.png",
