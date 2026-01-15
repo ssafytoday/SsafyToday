@@ -1,99 +1,93 @@
-import sha1 from 'js-sha1';
-
-const debug = true;
+/**
+ * Utility functions for SsafyToday
+ */
 
 /**
- * 현재 익스텐션의 버전정보를 반환합니다.
- * @returns 현재 익스텐션의 버전정보
+ * Get current extension version
+ * @returns The current extension version
  */
 export function getVersion(): string {
   return chrome.runtime.getManifest().version;
 }
 
 /**
- * element가 존재하는지 반환합니다.
- * @param element - 존재하는지 확인할 element
- * @returns 존재하면 true, 존재하지 않으면 false
+ * Check if an element exists
+ * @param element - Element to check
+ * @returns true if element exists and has length > 0
  */
-export function elementExists(
-  element: NodeListOf<Element> | HTMLCollectionOf<Element> | Element[] | null | undefined
-): boolean {
-  return (
-    element !== undefined &&
-    element !== null &&
-    'length' in element &&
-    element.length > 0
-  );
+export function elementExists(element: unknown): boolean {
+  if (element === undefined || element === null) return false;
+  if (typeof element === "object" && element !== null && "length" in element) {
+    return (element as { length: number }).length > 0;
+  }
+  return false;
 }
 
 /**
- * 해당 값이 null 또는 undefined인지 체크합니다.
- * @param value - 체크할 값
- * @returns null이면 true, null이 아니면 false
+ * Check if value is null or undefined
+ * @param value - Value to check
+ * @returns true if value is null or undefined
  */
 export function isNull(value: unknown): value is null | undefined {
   return value === null || value === undefined;
 }
 
 /**
- * 해당 값이 비어있거나 빈 문자열인지 체크합니다.
- * @param value - 체크할 값
- * @returns 비어있으면 true, 비어있지 않으면 false
+ * Check if value is empty (null, undefined, empty string, or empty array)
+ * @param value - Value to check
+ * @returns true if value is empty
  */
 export function isEmpty(value: unknown): boolean {
   if (isNull(value)) return true;
-  if (typeof value === 'string' || Array.isArray(value)) {
-    return value.length === 0;
-  }
-  if (typeof value === 'object' && value !== null) {
-    return Object.keys(value).length === 0;
+  if (typeof value === "string" && value.length === 0) return true;
+  if (Array.isArray(value) && value.length === 0) return true;
+  if (typeof value === "object" && value !== null && "length" in value) {
+    return (value as { length: number }).length === 0;
   }
   return false;
 }
 
 /**
- * UTF-8문자열의 길이를 한글을 3byte로 계산하며 반환합니다.
- * \r\n escape문자는 \n으로 변환됩니다.
- * @param str - 계산할 문자열
- * @returns 계산된 길이
+ * Calculate UTF-8 byte length of a string (Korean characters count as 3 bytes)
+ * Normalizes \r\n to \n
+ * @param str - String to calculate
+ * @returns Byte length
  */
 export function utf8Length(str: string): number {
-  const normalizedStr = str.replace(/\r\n/g, '\n');
+  const normalizedStr = str.replace(/\r\n/g, "\n");
   return new TextEncoder().encode(normalizedStr).length;
 }
 
-interface ProblemObject {
-  codeLength?: number | string;
-  code?: string;
-  problem_tags?: string[];
-}
-
 /**
- * 'codeLength' 값이 비어있다면 'code'의 길이로 계산해서 채웁니다.
- * 'problem_tags' 값이 비어있다면 '분류 없음'으로 채웁니다.
- * @param obj - 체크하여 길이를 계산할 객체
- * @returns 반환할 객체
+ * Pre-process object for upload
+ * - Fills codeLength if empty
+ * - Fills problem_tags with default if empty
+ * @param obj - Object to process
+ * @returns Processed object or null
  */
-export function preProcessEmptyObj<T extends ProblemObject>(obj: T): T {
+export function preProcessEmptyObj<T extends { code?: string; codeLength?: string | number; problem_tags?: string[] }>(
+  obj: T | null | undefined
+): T | null {
+  if (isNull(obj)) {
+    return null;
+  }
   if (isEmpty(obj.codeLength) && !isEmpty(obj.code)) {
-    const { code } = obj;
-    obj.codeLength = utf8Length(code!);
+    (obj as Record<string, unknown>).codeLength = utf8Length(obj.code!);
   }
   if (isEmpty(obj.problem_tags) && !isEmpty(obj.code)) {
-    obj.problem_tags = ['분류 없음'];
+    obj.problem_tags = ["분류 없음"];
   }
   return obj;
 }
 
 /**
- * 객체 또는 배열의 모든 요소를 재귀적으로 순회하여 값이 비어있지 않은지 체크합니다.
- * 자기 자신의 null값이거나 빈 문자열, 빈 배열, 빈 객체인 경우이거나, 요소 중 하나라도 값이 비어있으면 false를 반환합니다.
- * @param obj - 체크할 객체 또는 배열
- * @returns 비어있지 않으면 true, 비어있으면 false
+ * Recursively check if object/array has any non-empty values
+ * @param obj - Object or array to check
+ * @returns true if object has non-empty values
  */
 export function isNotEmpty(obj: unknown): boolean {
   if (isEmpty(obj)) return false;
-  if (typeof obj !== 'object' || obj === null) return true;
+  if (typeof obj !== "object" || obj === null) return true;
   if (Array.isArray(obj) && obj.length === 0) return false;
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -103,121 +97,113 @@ export function isNotEmpty(obj: unknown): boolean {
   return true;
 }
 
-const htmlEscapeMap: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#039;',
-};
-
 /**
- * 문자열을 escape 하여 반환합니다.
- * @param text - escape 할 문자열
- * @returns escape된 문자열
+ * Escape HTML special characters
+ * @param text - Text to escape
+ * @returns Escaped text
  */
 export function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (m) => htmlEscapeMap[m]);
+  const map: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;",
+  };
+
+  return text.replace(/[&<>"']/g, (m) => map[m]);
 }
 
-const htmlUnescapeMap: Record<string, string> = {
-  '&amp;': '&',
-  '&#38;': '&',
-  '&lt;': '<',
-  '&#60;': '<',
-  '&gt;': '>',
-  '&#62;': '>',
-  '&apos;': "'",
-  '&#39;': "'",
-  '&quot;': '"',
-  '&#34;': '"',
-  '&nbsp;': ' ',
-  '&#160;': ' ',
-};
-
 /**
- * escape된 문자열을 unescape하여 반환합니다.
- * @param text - unescape할 문자열
- * @returns unescape된 문자열
+ * Unescape HTML entities
+ * @param text - Text to unescape
+ * @returns Unescaped text
  */
 export function unescapeHtml(text: string): string {
-  return text.replace(
-    /&(?:amp|#38|lt|#60|gt|#62|apos|#39|quot|#34|nbsp|#160);/g,
-    (m) => htmlUnescapeMap[m]
-  );
+  const unescaped: Record<string, string> = {
+    "&amp;": "&",
+    "&#38;": "&",
+    "&lt;": "<",
+    "&#60;": "<",
+    "&gt;": ">",
+    "&#62;": ">",
+    "&apos;": "'",
+    "&#39;": "'",
+    "&quot;": '"',
+    "&#34;": '"',
+    "&nbsp;": " ",
+    "&#160;": " ",
+  };
+  return text.replace(/&(?:amp|#38|lt|#60|gt|#62|apos|#39|quot|#34|nbsp|#160);/g, (m) => unescaped[m]);
 }
 
-const singleToDoubleCharMap: Record<string, string> = {
-  '!': '！',
-  '%': '％',
-  '&': '＆',
-  '(': '（',
-  ')': '）',
-  '*': '＊',
-  '+': '＋',
-  ',': '，',
-  '.': '．',
-  '/': '／',
-  ':': '：',
-  ';': '；',
-  '<': '＜',
-  '=': '＝',
-  '>': '＞',
-  '?': '？',
-  '@': '＠',
-  '[': '［',
-  '\\': '＼',
-  ']': '］',
-  '^': '＾',
-  _: '＿',
-  '`': '｀',
-  '{': '｛',
-  '|': '｜',
-  '}': '｝',
-  '~': '～',
-  ' ': ' ',
-};
-
 /**
- * 일반 특수문자를 전각문자로 변환하는 함수
- * @param text - 변환할 문자열
- * @returns 전각문자로 변환된 문자열
+ * Convert single-width characters to full-width characters
+ * @param text - Text to convert
+ * @returns Converted text with full-width characters
  */
 export function convertSingleCharToDoubleChar(text: string): string {
-  return text.replace(/[!%&()*+,./:;<=>?@[\]^_`{|}~ -]/g, (m) => singleToDoubleCharMap[m]);
+  const map: Record<string, string> = {
+    "!": "！",
+    "%": "％",
+    "&": "＆",
+    "(": "（",
+    ")": "）",
+    "*": "＊",
+    "+": "＋",
+    ",": "，",
+    ".": "．",
+    "/": "／",
+    ":": "：",
+    ";": "；",
+    "<": "＜",
+    "=": "＝",
+    ">": "＞",
+    "?": "？",
+    "@": "＠",
+    "[": "［",
+    "\\": "＼",
+    "]": "］",
+    "^": "＾",
+    "_": "＿",
+    "`": "｀",
+    "{": "｛",
+    "|": "｜",
+    "}": "｝",
+    "~": "～",
+    " ": " ", // FOUR-PER-EM SPACE
+    "-": "－",
+  };
+  return text.replace(/[!%&()*+,./:;<=>?@[\]\\^`{|}~ -]/g, (m) => map[m]);
 }
 
 /**
- * base64로 문자열을 base64로 인코딩하여 반환합니다.
- * @param str - base64로 인코딩할 문자열
- * @returns base64로 인코딩된 문자열
+ * Encode string to base64 with Unicode support
+ * @param str - String to encode
+ * @returns Base64 encoded string
  */
 export function b64EncodeUnicode(str: string): string {
-  return btoa(
-    encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_match, p1: string) =>
-      String.fromCharCode(parseInt(p1, 16))
-    )
-  );
+  return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_match, p1) => String.fromCharCode(parseInt(p1, 16))));
 }
 
 /**
- * base64로 인코딩된 문자열을 base64로 디코딩하여 반환합니다.
- * @param b64str - base64로 인코딩된 문자열
- * @returns base64로 디코딩된 문자열
+ * Decode base64 string with Unicode support
+ * @param b64str - Base64 string to decode
+ * @returns Decoded string
  */
 export function b64DecodeUnicode(b64str: string): string {
   return decodeURIComponent(
     atob(b64str)
-      .split('')
+      .split("")
       .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
-      .join('')
+      .join("")
   );
 }
 
 /**
- * 문자열에서 숫자를 추출하여 반환합니다.
- * @param str - 숫자를 추출할 문자열
- * @returns 추출된 숫자
+ * Parse first number from string
+ * @param str - String to parse
+ * @returns Parsed number or NaN
  */
 export function parseNumberFromString(str: string): number {
   const numbers = str.match(/\d+/g);
@@ -228,20 +214,21 @@ export function parseNumberFromString(str: string): number {
 }
 
 /**
- * key 값을 기준으로 array를 그룹핑하여 map으로 반환합니다.
- * @param array - 그룹핑할 배열
- * @param key - 그룹핑할 키
- * @returns key 기준으로 그룹핑된 객체들 배열을 value로 갖는 map
+ * Group array by key(s)
+ * @param array - Array to group
+ * @param key - Key or keys to group by
+ * @returns Grouped object
  */
-export function groupBy<T extends object>(
+export function groupBy<T extends Record<string, unknown>>(
   array: T[],
-  key: keyof T
+  key: keyof T | (keyof T)[]
 ): Record<string, T[]> {
+  const keys = Array.isArray(key) ? key : [key];
   return array.reduce(
     (rv, x) => {
-      const keyValue = String(x[key]);
-      rv[keyValue] = rv[keyValue] || [];
-      rv[keyValue].push(x);
+      const groupKey = keys.map((k) => String(x[k])).join("||");
+      rv[groupKey] = rv[groupKey] || [];
+      rv[groupKey].push(x);
       return rv;
     },
     {} as Record<string, T[]>
@@ -249,15 +236,15 @@ export function groupBy<T extends object>(
 }
 
 /**
- * arr에서 같은 key 그룹 내의 요소 중 최고의 값을 리스트화하여 반환합니다.
- * @param arr - 비교할 요소가 있는 배열
- * @param key - 같은 그룹으로 묶을 키 값
- * @param compare - 비교할 함수
- * @returns 같은 key 그룹 내의 요소 중 최고의 값을 반환합니다.
+ * Get max values per group
+ * @param arr - Array to process
+ * @param key - Key or keys to group by
+ * @param compare - Comparison function
+ * @returns Array of max values per group
  */
-export function maxValuesGroupBykey<T extends object>(
+export function maxValuesGroupBykey<T extends Record<string, unknown>>(
   arr: T[],
-  key: keyof T,
+  key: keyof T | (keyof T)[],
   compare: (a: T, b: T) => number
 ): T[] {
   const map = groupBy(arr, key);
@@ -270,38 +257,44 @@ export function maxValuesGroupBykey<T extends object>(
 }
 
 /**
- * 배열 내의 key에 val 값을 포함하고 있는 요소만을 반환합니다.
- * @param arr - 필터링할 배열
- * @param conditions - 필터링 조건 객체
- * @returns 필터링된 배열
+ * Filter array by conditions
+ * @param arr - Array to filter
+ * @param conditions - Filter conditions
+ * @returns Filtered array
  */
-export function filter<T extends Record<string, string>>(
+export function filter<T extends Record<string, unknown>>(
   arr: T[],
-  conditions: Record<string, string>
+  conditions: Partial<Record<keyof T, string>>
 ): T[] {
   return arr.filter((item) => {
     for (const [key, value] of Object.entries(conditions)) {
-      if (!item[key].includes(value)) return false;
+      const itemValue = String(item[key as keyof T] ?? "");
+      if (!itemValue.includes(value as string)) return false;
     }
     return true;
   });
 }
 
 /**
- * calculate github blob file SHA
- * @param content - file content
+ * Calculate GitHub blob SHA
+ * @param content - File content
  * @returns SHA hash
  */
-export function calculateBlobSHA(content: string): string {
-  return sha1(`blob ${new Blob([content]).size}\0${content}`);
+export async function calculateBlobSHA(content: string): Promise<string> {
+  const textEncoder = new TextEncoder();
+  const data = textEncoder.encode(`blob ${new Blob([content]).size}\0${content}`);
+  const hashBuffer = await crypto.subtle.digest("SHA-1", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hexHash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return hexHash;
 }
 
 /**
- * asyncPool https://github.com/rxaviers/async-pool/blob/master/lib/es7.js
- * @param poolLimit - pool limit
- * @param array - array to be processed
- * @param iteratorFn - iterator function
- * @returns processed array
+ * Async pool for concurrent operations with limit
+ * @param poolLimit - Maximum concurrent operations
+ * @param array - Array to process
+ * @param iteratorFn - Async iterator function
+ * @returns Promise resolving to array of results
  */
 export async function asyncPool<T, R>(
   poolLimit: number,
@@ -310,6 +303,7 @@ export async function asyncPool<T, R>(
 ): Promise<R[]> {
   const ret: Promise<R>[] = [];
   const executing: Promise<void>[] = [];
+
   for (const item of array) {
     const p = Promise.resolve().then(() => iteratorFn(item, array));
     ret.push(p);
@@ -328,19 +322,11 @@ export async function asyncPool<T, R>(
 }
 
 /**
- * combine two array<Object> same index.
- * @param a - 첫 번째 배열
- * @param b - 두 번째 배열
- * @returns 병합된 배열
+ * Combine two arrays by merging objects at same index
+ * @param a - First array
+ * @param b - Second array
+ * @returns Combined array
  */
-export function combine<T extends object, U extends object>(a: T[], b: U[]): (T & U)[] {
+export function combine<A extends object, B extends object>(a: A[], b: B[]): (A & B)[] {
   return a.map((x, i) => ({ ...x, ...b[i] }));
-}
-
-/**
- * Log function that only works when debug is true
- * @param args - Arguments to log
- */
-export function log(...args: unknown[]): void {
-  if (typeof debug !== 'undefined' && debug) console.log(...args);
 }

@@ -4,7 +4,7 @@ node_modules/
 # Build outputs
 dist/
 packages/
-ssafytoday.zip
+SsafyToday.zip
 
 # IDE and editor files
 .vscode/
@@ -26,4 +26,3 @@ tmp/
 test/temp_chrome_profile/
 *screenshot.png
 COMMIT_EDITMSG
-tmpclaude-*

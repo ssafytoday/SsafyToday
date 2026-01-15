@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="css/popup.css" />
-    <title>SsafyToday Popup</title>
+    <title>SsafyToday</title>
   </head>
 
   <body>
@@ -14,18 +14,19 @@
           Ssafy
           <span style="color: #0078c3">Today</span>
         </h1>
-        <p id="caption">Sync your code from BOJ to GitHub</p>
+        <p id="caption">코딩 풀이를 GitHub에 자동 동기화</p>
       </header>
 
       <main class="sixteen wide center aligned column">
         <!-- Authentication mode -->
         <section id="auth_mode" hidden>
           <p class="onboarding">
-            Authenticate with GitHub to use
+            GitHub 인증 후
             <strong>
               Ssafy
               <span style="color: #f18500">Today</span>
             </strong>
+            를 사용하세요
           </p>
           <button id="authenticate" class="secondary button">
             <i class="icon github" aria-hidden="true"></i>
@@ -36,11 +37,12 @@
         <!-- Repo Hook mode -->
         <section id="hook_mode" hidden>
           <p class="onboarding">
-            Set up repository hook to use
+            저장소를 연결해서
             <strong>
               Ssafy
               <span style="color: #0078c3">Today</span>
             </strong>
+            를 사용하세요
           </p>
           <a id="hook_URL" href="" target="_blank" class="secondary button">
             <i class="icon github" aria-hidden="true"></i>
@@ -50,29 +52,28 @@
 
         <section id="commit_mode" hidden>
           <p id="repo_url" class="small header"></p>
-          <div class="small header">
-            Want more features?
-            <a style="color: rgb(10, 89, 92) !important" target="_blank" href="https://github.com/ssafytoday/SsafyToday/labels/feature">Request a feature!</a>
+          
+          <!-- Enable Toggle -->
+          <div class="auto-commit-container">
+            <div class="auto-commit-label">Enabled</div>
+            <div class="toggle-switch-container">
+              <input type="checkbox" id="enable_popup" class="toggle-switch-checkbox" checked />
+              <label for="enable_popup" class="toggle-switch-label">
+                <span class="toggle-switch-inner"></span>
+                <span class="toggle-switch-switch"></span>
+              </label>
+            </div>
           </div>
         </section>
 
-        <!-- 기능 on/off -->
-        <div class="toggle-switch-container">
-          <input type="checkbox" id="onffbox" class="toggle-switch-checkbox" />
-          <label for="onffbox" class="toggle-switch-label">
-            <span class="toggle-switch-inner"></span>
-            <span class="toggle-switch-switch"></span>
-          </label>
-        </div>
       </main>
 
       <footer id="socials" class="sixteen wide column">
-        <a title="SsafyToday GitHub" href="https://github.com/ssafytoday/SsafyToday" target="_blank"><i class="github icon" aria-hidden="true"></i></a>
         <a title="Settings" id="settings_URL" href="settings.html" target="_blank"><i class="settings icon" aria-hidden="true"></i></a>
-        <!-- <a title="Email" href="mailto:ssafytoday@googlegroups.com" target="_blank"><i class="envelope icon" aria-hidden="true"></i></a> -->
+        <a title="SsafyToday" href="https://ssafy.today" target="_blank"><i class="github icon" aria-hidden="true"></i></a>
       </footer>
     </div>
 
-    <script src="popup.js" type="module" defer></script>
+    <script src="popup.ts" type="module"></script>
 </body>
 </html>

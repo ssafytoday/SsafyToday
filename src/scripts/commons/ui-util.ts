@@ -1,141 +1,120 @@
-import type { UploadState } from '@types';
+/**
+ * Common UI utility functions
+ * Functions used commonly across all platforms
+ */
+import type { UploadState } from "@/types/platform";
 
 /**
- * 업로드 실패 아이콘을 표시합니다.
- *
- * @param uploadState - 업로드 상태를 관리하는 객체
+ * Display upload failed icon
+ * @param uploadState - Object managing upload state
  */
-export function markUploadFailedCSS(uploadState: UploadState | null): void {
+export function markUploadFailedCSS(uploadState?: UploadState | null): void {
   if (uploadState) {
     uploadState.uploading = false;
   }
 
-  const elem = document.getElementById('baekjoonHubProgressElem');
+  const elem = document.getElementById("baekjoonHubProgressElem");
   if (!elem) return;
 
-  elem.className = 'markuploadfailed';
-}
-
-interface UploadStateWithCountdown extends UploadState {
-  countdown?: ReturnType<typeof setTimeout>;
+  elem.className = "markuploadfailed";
 }
 
 /**
- * 업로드 타임아웃을 설정합니다.
- * 10초 이내에 업로드가 완료되지 않으면 실패로 간주합니다.
+ * Set upload timeout
+ * No longer needed since using Toast, but kept for compatibility
  *
- * @param uploadState - 업로드 상태를 관리하는 객체
- * @param timeout - 타임아웃 시간 (기본값: 10000ms)
+ * @param uploadState - Object managing upload state
+ * @param timeout - Timeout duration (default: 10000ms)
  */
-export function startUploadCountDown(
-  uploadState: UploadStateWithCountdown | null,
-  timeout: number = 10000
-): void {
-  if (!uploadState) return;
-
-  uploadState.uploading = true;
-  uploadState.countdown = setTimeout(() => {
-    if (uploadState.uploading === true) {
-      markUploadFailedCSS(uploadState);
-    }
-  }, timeout);
+export function startUploadCountDown(uploadState?: UploadState | null, _timeout = 10000): void {
+  // Toast를 사용하므로 별도의 타임아웃 처리가 필요 없음
+  if (uploadState) {
+    uploadState.uploading = true;
+  }
 }
 
 /**
- * 백준의 날짜 형식과 같게 포맷된 스트링을 반환하는 함수
+ * Format date string like Baekjoon's format
  * @example 2023년 9월 23일 16:26:26
- * @param date - Date 객체
- * @returns 포맷된 스트링
+ * @param date - Date object
+ * @returns Formatted date string
  */
 export function getDateString(date: Date): string {
   const year = date.getFullYear();
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
-  const hours = date.getHours().toString().padStart(2, '0');
-  const minutes = date.getMinutes().toString().padStart(2, '0');
-  const seconds = date.getSeconds().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const day = date.getDate().toString().padStart(2, "0");
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  const seconds = date.getSeconds().toString().padStart(2, "0");
 
   return `${year}년 ${month}월 ${day}일 ${hours}:${minutes}:${seconds}`;
 }
 
 /**
- * 업로드 UI를 초기화하고 로딩 아이콘을 표시합니다.
- * 각 플랫폼별 타겟 요소를 인수로 받아 해당 요소에 로딩 아이콘을 추가합니다.
+ * Initialize upload UI and show loading icon
+ * Receives platform-specific target element and adds loading icon to it
  *
- * @param targetElement - 로딩 아이콘을 추가할 대상 요소
- * @param uploadState - 업로드 상태를 관리하는 객체
- * @returns 생성된 로딩 아이콘 요소
+ * @param targetElement - Target element to add loading icon to
+ * @param uploadState - Object managing upload state
+ * @returns Created loading icon element or null
  */
 export function initUploadUI(
   targetElement: HTMLElement | null,
-  uploadState: UploadState | null
+  uploadState?: UploadState | null
 ): HTMLElement | null {
   if (!targetElement) return null;
 
-  // 로딩 아이콘 컨테이너 생성
-  let container = document.getElementById('baekjoonHubProgressAnchorElement');
-  if (!container || container === undefined) {
-    container = document.createElement('span');
-    container.id = 'baekjoonHubProgressAnchorElement';
-    container.className = 'runcode-wrapper__8rXm';
-    container.style.cssText = 'margin-left: 10px; padding-top: 0px;';
-  }
-
-  // 로딩 아이콘 요소 추가
-  container.innerHTML = `<div id="baekjoonHubProgressElem" class="baekjoonHubProgress"></div>`;
-  targetElement.append(container);
-
-  // 업로드 타임아웃 시작
+  // Toast를 사용하므로 로딩 UI는 더 이상 필요하지 않지만
+  // 다른 플랫폼과의 호환성을 위해 기본 구조는 유지
   startUploadCountDown(uploadState);
-
-  return container;
+  return null;
 }
 
 /**
- * 업로드 완료 아이콘을 표시하고 GitHub 링크를 연결합니다.
+ * Display upload completed icon and link to GitHub
  *
- * @param branches - 브랜치 정보 ('userName/repositoryName': 'branchName')
- * @param directory - 디렉토리 경로 ('백준/Gold/1000. A+B')
- * @param uploadState - 업로드 상태를 관리하는 객체
+ * @param branches - Branch info ('userName/repositoryName': 'branchName')
+ * @param directory - Directory path ('백준/Gold/1000. A+B')
+ * @param uploadState - Object managing upload state
  */
 export function markUploadedCSS(
   branches: Record<string, string>,
   directory: string,
-  uploadState: UploadState | null
+  uploadState?: UploadState | null
 ): void {
   if (uploadState) {
     uploadState.uploading = false;
   }
 
-  const elem = document.getElementById('baekjoonHubProgressElem');
+  const elem = document.getElementById("baekjoonHubProgressElem");
   if (!elem) return;
 
-  elem.className = 'markuploaded';
+  elem.className = "markuploaded";
 
-  // GitHub 링크 생성
+  // Create GitHub link
   const repoName = Object.keys(branches)[0];
   const branchName = branches[repoName];
   const uploadedUrl = `https://github.com/${repoName}/tree/${branchName}/${directory}`;
 
-  // 클릭 이벤트 등록
-  elem.addEventListener('click', () => {
+  // Register click event
+  elem.addEventListener("click", () => {
     window.location.href = uploadedUrl;
   });
-  elem.style.cursor = 'pointer';
+  elem.style.cursor = "pointer";
 }
 
 /**
- * 이미지 태그의 상대 URL을 절대 URL로 변환합니다.
+ * Convert image tag relative URLs to absolute URLs
  *
- * @param doc - 변환할 문서 객체
+ * @param element - Document or HTMLElement to process
  */
-export function convertImageTagToAbsoluteURL(doc: Document = document): void {
-  if (!doc) return;
+export function convertImageTagToAbsoluteURL(element: Document | HTMLElement = document): void {
+  if (!element) return;
 
-  // img 태그 찾아서 src 속성을 절대 경로로 변경
-  Array.from(doc.getElementsByTagName('img')).forEach((img) => {
+  // Find img tags and convert src attributes to absolute paths
+  Array.from(element.getElementsByTagName("img")).forEach((img) => {
     if (img.currentSrc) {
-      img.setAttribute('src', img.currentSrc);
+      img.setAttribute("src", img.currentSrc);
     }
   });
 }

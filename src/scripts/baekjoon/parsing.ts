@@ -1,13 +1,21 @@
+/**
+ * Baekjoon platform parsing functions
+ * Handles problem description, submission code, and result table parsing
+ */
 import {
   isNull,
+  isEmpty,
   preProcessEmptyObj,
   parseNumberFromString,
   asyncPool,
   convertSingleCharToDoubleChar,
   unescapeHtml,
-  log,
-} from '@/commons/util';
-import { getDateString, convertImageTagToAbsoluteURL } from '@/commons/ui-util';
+  filter,
+} from "@/commons/util";
+import log from "@/commons/logger";
+import { getDateString, convertImageTagToAbsoluteURL } from "@/commons/ui-util";
+import { ReadmeBuilder } from "@/commons/readme-builder";
+import { httpClient } from "@/commons/http-client";
 import {
   updateProblemData,
   getProblemData,
@@ -15,49 +23,71 @@ import {
   getSubmitCodeData,
   updateSolvedACData,
   getSolvedACData,
-} from '@/baekjoon/storage';
-import { languages, bjLevel, uploadState } from '@/baekjoon/variables';
+} from "@/baekjoon/storage";
+import { bjLevel, RESULT_CATEGORY, uploadState, getLanguageExtension } from "@/baekjoon/variables";
 import {
+  findUsername,
+  isExistResultTable,
   markUploadFailedCSS,
   selectBestSubmissionList,
+  convertResultTableHeader,
   langVersionRemove,
-} from '@/baekjoon/util';
-import { getDirNameByOrgOption } from '@/commons/storage';
-import urls from '@/constants/url';
-import type { SolvedACProblem, SolvedACTag, SolvedACDisplayName, BaekjoonProblemData, SolvedApiCallMessage } from '@types';
+} from "@/baekjoon/util";
+import { getDirNameByTemplate } from "@/commons/storage";
+import urls from "@/constants/url";
 
-interface BaekjoonSubmission {
-  submissionId: string;
-  problemId: string;
-  result: string;
-  language: string;
-  runtime: string;
-  memory: string;
-  codeLength: string;
-  submissionTime: string;
-  username: string;
-}
-
-interface ProblemDescription {
+// Submission data interface
+interface SubmissionData {
   problemId?: string;
-  problemDescription?: string;
-  problemInput?: string;
-  problemOutput?: string;
+  submissionId?: string;
+  username?: string;
+  result?: string;
+  resultCategory?: string;
+  language?: string;
+  runtime?: string;
+  memory?: string;
+  codeLength?: string;
+  submissionTime?: string;
+  elementId?: string;
+  [key: string]: string | undefined;
 }
 
-interface ProblemInfoAndCode {
+// Problem info interface
+interface ProblemInfo {
   problemId: string;
-  submissionId: string;
-  title: string;
-  level: string;
-  code: string;
+  submissionId?: string;
+  title?: string;
+  level?: string;
+  code?: string;
   problemDescription?: string;
   problemInput?: string;
   problemOutput?: string;
-  problemTags: string[];
+  problemTags?: string[];
 }
 
-interface DetailMessageAndReadme {
+// Parsed problem description interface
+interface ProblemDescription {
+  problemId: string;
+  problemDescription: string;
+  problemInput: string;
+  problemOutput: string;
+}
+
+// Solved.ac problem data interface
+interface SolvedACProblem {
+  problemId: number;
+  titleKo: string;
+  level: number;
+  tags?: Array<{
+    displayNames: Array<{
+      language: string;
+      name: string;
+    }>;
+  }>;
+}
+
+// Upload data interface
+interface UploadData {
   directory: string;
   fileName: string;
   message: string;
@@ -66,243 +96,229 @@ interface DetailMessageAndReadme {
 }
 
 /**
- * url에 해당하는 html 문서를 가져오는 함수
- * @param url - url 주소
- * @returns html document
+ * Fetch HTML document from URL
+ * @param url - Target URL
+ * @returns Parsed HTML document
  */
 export async function findHtmlDocumentByUrl(url: string): Promise<Document> {
-  const html = await fetch(url, { method: 'GET' });
-  const text = await html.text();
-  const parser = new DOMParser();
-  return parser.parseFromString(text, 'text/html');
-}
-
-export function parsingResultTableList(doc: Document = document): BaekjoonSubmission[] {
-  const table: BaekjoonSubmission[] = [];
-  const trs = doc.querySelectorAll('#status-table > tbody > tr');
-  trs.forEach((tr) => {
-    const td = tr.querySelectorAll('td');
-    const submissionId = td[0].innerText.trim();
-    const problemId = td[2].innerText.trim();
-    const result = td[3].innerText.trim();
-    const language = td[5].innerText.trim();
-    const runtime = td[6].innerText.trim();
-    const memory = td[7].innerText.trim();
-    const codeLength = td[8].innerText.trim();
-    const submissionTime = td[9].innerText.trim();
-    const username = td[1].innerText.trim();
-    table.push({
-      submissionId,
-      problemId,
-      result,
-      language,
-      runtime,
-      memory,
-      codeLength,
-      submissionTime,
-      username,
-    });
-  });
-  return table;
+  return httpClient.getDocument(url);
 }
 
 /**
- * user가 "맞았습니다!!" 결과를 맞은 모든 제출 결과 리스트를 가져오는 함수
- * @param username - 백준 아이디
- * @returns Promise<BaekjoonSubmission[]>
+ * Parse result table from document
+ * @param doc - HTML document (defaults to current document)
+ * @returns Array of submission data
  */
-export async function findResultTableListByUsername(
-  username: string
-): Promise<BaekjoonSubmission[]> {
-  const result: BaekjoonSubmission[] = [];
-  let doc = await findHtmlDocumentByUrl(
-    `${urls.BAEKJOON_STATUS_URL}?user_id=${username}&result_id=4`
+export function parsingResultTableList(doc: Document = document): SubmissionData[] {
+  const table = doc.getElementById("status-table") as HTMLTableElement | null;
+  if (table === null || table === undefined || table.rows.length === 0) return [];
+
+  const headers = Array.from(table.rows[0].cells, (x) =>
+    convertResultTableHeader(x.innerText.trim())
   );
-  let nextPage = doc.getElementById('next_page');
-  do {
-    result.push(...parsingResultTableList(doc));
-    if (nextPage !== null) {
-      doc = await findHtmlDocumentByUrl(nextPage.getAttribute('href') || '');
-      nextPage = doc.getElementById('next_page');
-    }
-  } while (nextPage !== null);
-  result.push(...parsingResultTableList(doc));
 
-  return result;
+  const list: SubmissionData[] = [];
+  for (let i = 1; i < table.rows.length; i++) {
+    const row = table.rows[i];
+    const cells = Array.from(row.cells, (x, index) => {
+      switch (headers[index]) {
+        case "result": {
+          const firstChild = x.firstChild as HTMLElement | null;
+          return {
+            result: x.innerText.trim(),
+            resultCategory: firstChild?.getAttribute?.("data-color")?.replace("-eng", "").trim() || "",
+          };
+        }
+        case "language":
+          return unescapeHtml(x.innerText).replace(/\/.*$/g, "").trim();
+        case "submissionTime": {
+          const el =
+            x.querySelector("a.real-time-update.show-date") ||
+            x.querySelector("a.show-date");
+          if (isNull(el)) return null;
+          return (el as HTMLElement).getAttribute("data-original-title");
+        }
+        case "problemId": {
+          const a = x.querySelector("a.problem_title") as HTMLAnchorElement | null;
+          if (isNull(a)) return null;
+          return {
+            problemId: a.getAttribute("href")?.replace(/^.*\/([0-9]+)$/, "$1") || "",
+          };
+        }
+        default:
+          return x.innerText.trim();
+      }
+    });
+
+    let obj: SubmissionData = { elementId: row.id };
+    for (let j = 0; j < headers.length; j++) {
+      const value = cells[j];
+      if (value && typeof value === "object") {
+        obj = { ...obj, ...value };
+      } else {
+        (obj as Record<string, unknown>)[headers[j]] = value;
+      }
+    }
+    list.push(obj);
+  }
+
+  log.debug("TableList", list);
+  return list;
 }
 
 /**
- * user가 "맞았습니다!!" 결과를 맞은 중복되지 않은 제출 결과 리스트를 가져오는 함수
- * @param username - 백준 아이디
- * @returns Promise<BaekjoonSubmission[]>
- */
-export async function findUniqueResultTableListByUsername(
-  username: string
-): Promise<BaekjoonSubmission[]> {
-  return selectBestSubmissionList(await findResultTableListByUsername(username));
-}
-
-export async function fetchProblemDescriptionById(
-  problemId: string
-): Promise<ProblemDescription> {
-  const res = await fetch(`${urls.BAEKJOON_PROBLEM_URL}${problemId}`);
-  const html = await res.text();
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  return parseProblemDescription(doc);
-}
-
-export async function fetchSubmitCodeById(submissionId: string): Promise<string> {
-  const res = await fetch(`${urls.BAEKJOON_SOURCE_DOWNLOAD_URL}${submissionId}`, {
-    method: 'GET',
-  });
-  return res.text();
-}
-
-export async function getProblemDescriptionById(
-  problemId: string
-): Promise<ProblemDescription | null> {
-  let problem: ProblemDescription | null = await getProblemData(problemId);
-  if (isNull(problem)) {
-    problem = await fetchProblemDescriptionById(problemId);
-    if (problem) {
-      updateProblemData({
-        problemId,
-        problem_description: problem.problemDescription,
-        problem_input: problem.problemInput,
-        problem_output: problem.problemOutput,
-      });
-    }
-  }
-  return problem;
-}
-
-export async function getSubmitCodeById(submissionId: string): Promise<string> {
-  let code = await getSubmitCodeData(submissionId);
-  if (isNull(code)) {
-    code = await fetchSubmitCodeById(submissionId);
-    updateSubmitCodeData({ submissionId, code });
-  }
-  return code || '';
-}
-
-export async function getSolvedACById(problemId: string): Promise<SolvedACProblem | undefined> {
-  let jsonData = await getSolvedACData(problemId);
-  if (isNull(jsonData)) {
-    jsonData = await fetchSolvedACById(parseInt(problemId));
-    if (jsonData) {
-      updateSolvedACData({ problemId, jsonData });
-    }
-  }
-  return jsonData;
-}
-
-/**
- * 문제와 제출 코드 정보를 가져옵니다.
+ * Find problem info and submission code
+ * @param problemId - Problem ID
+ * @param submissionId - Submission ID
+ * @returns Problem info with code or null
  */
 export async function findProblemInfoAndSubmissionCode(
   problemId: string,
   submissionId: string
-): Promise<ProblemInfoAndCode | null> {
-  log('in find with promise');
-  if (!isNull(problemId) && !isNull(submissionId)) {
-    try {
-      const [description, code, solvedJson] = await Promise.all([
-        getProblemDescriptionById(problemId),
-        getSubmitCodeById(submissionId),
-        getSolvedACById(problemId),
-      ]);
+): Promise<ProblemInfo | null> {
+  log.debug("findProblemInfoAndSubmissionCode - problemId:", problemId, "submissionId:", submissionId);
 
-      if (!solvedJson) return null;
+  if (isNull(problemId) || isNull(submissionId)) {
+    log.error("findProblemInfoAndSubmissionCode - problemId or submissionId is null");
+    return null;
+  }
 
-      const problemTags = solvedJson.tags
-        .flatMap((tag: SolvedACTag) => tag.displayNames)
-        .filter((tag: SolvedACDisplayName) => tag.language === 'ko')
-        .map((tag: SolvedACDisplayName) => tag.name);
-      const title = solvedJson.titleKo;
-      const level = bjLevel[solvedJson.level];
+  try {
+    const [description, code, solvedJson] = await Promise.all([
+      getProblemDescriptionById(problemId),
+      getSubmitCodeById(submissionId),
+      getSolvedACById(problemId),
+    ]);
 
-      const problemDescription = description?.problemDescription;
-      const problemInput = description?.problemInput;
-      const problemOutput = description?.problemOutput;
+    log.debug("findProblemInfoAndSubmissionCode - fetched data:", {
+      description: description ? "exists" : "null",
+      code: code ? "exists" : "null",
+      solvedJson: solvedJson ? "exists" : "null",
+    });
 
-      return {
-        problemId,
-        submissionId,
-        title,
-        level,
-        code,
-        problemDescription,
-        problemInput,
-        problemOutput,
-        problemTags,
-      };
-    } catch (err) {
-      console.log('error ocurred: ', err);
-      uploadState.uploading = false;
-      markUploadFailedCSS();
+    if (!description || !code || !solvedJson) {
+      log.error("findProblemInfoAndSubmissionCode - missing data");
       return null;
     }
+
+    const solvedData = solvedJson as SolvedACProblem;
+    const problemTags =
+      solvedData.tags
+        ?.flatMap((tag) => tag.displayNames)
+        ?.filter((tag) => tag.language === "ko")
+        ?.map((tag) => tag.name) || [];
+
+    const title = solvedData.titleKo;
+    const level = bjLevel[solvedData.level];
+
+    const problemDescription = (description as ProblemDescription).problemDescription;
+    const problemInput = (description as ProblemDescription).problemInput;
+    const problemOutput = (description as ProblemDescription).problemOutput;
+
+    return {
+      problemId,
+      submissionId,
+      title,
+      level,
+      code,
+      problemDescription,
+      problemInput,
+      problemOutput,
+      problemTags,
+    };
+  } catch (err) {
+    log.error("findProblemInfoAndSubmissionCode - error occurred:", err);
+    uploadState.uploading = false;
+    markUploadFailedCSS();
+    return null;
   }
-  return null;
 }
 
 /**
- * 문제의 상세 정보를 가지고, 문제의 업로드할 디렉토리, 파일명, 커밋 메시지, 문제 설명을 파싱하여 반환합니다.
+ * Create detail message and readme for upload
+ * @param data - Problem and submission data
+ * @returns Upload data with directory, filename, message, and readme
  */
-export async function makeDetailMessageAndReadme(
-  data: BaekjoonProblemData & ProblemInfoAndCode
-): Promise<DetailMessageAndReadme> {
-  const {
-    problemId,
-    result,
-    title,
-    level,
-    problemTags,
-    problemDescription,
-    problemInput,
-    problemOutput,
-    submissionTime,
-    code,
-    language,
-    memory,
-    runtime,
-  } = data;
-  const score = parseNumberFromString(result || '');
+export async function makeDetailMessageAndReadme(data: Record<string, unknown>): Promise<UploadData | null> {
+  log.debug("makeDetailMessageAndReadme - input data:", data);
 
-  // 데이터 객체에 언어 정보 전달
+  if (isNull(data)) {
+    log.error("makeDetailMessageAndReadme - data is null");
+    return null;
+  }
+
+  // Support both old and new variable names
+  const problemId = data.problemId as string;
+  const submissionId = data.submissionId as string;
+  const result = data.result as string | undefined;
+  const title = data.title as string;
+  const level = data.level as string;
+  const problemTags = (data.problemTags || data.problem_tags || []) as string[];
+  const problemDescription = (data.problemDescription || data.problem_description) as string | undefined;
+  const problemInput = (data.problemInput || data.problem_input) as string | undefined;
+  const problemOutput = (data.problemOutput || data.problem_output) as string | undefined;
+  const submissionTime = data.submissionTime as string | undefined;
+  const code = data.code as string;
+  const language = data.language as string;
+  const memory = data.memory as string;
+  const runtime = data.runtime as string;
+
+  // Validate required data
+  if (isNull(problemId) || isNull(title) || isNull(code) || isNull(language)) {
+    log.error("makeDetailMessageAndReadme - Missing required data:", {
+      problemId,
+      title,
+      code: code ? "exists" : "null",
+      language,
+    });
+    return null;
+  }
+
+  const score = parseNumberFromString(result || "");
   const processedLanguage = langVersionRemove(language, null);
 
-  // 기본 디렉토리 경로 생성
-  const baseDirPath = `백준/${level.replace(/ .*/, '')}/${problemId}. ${convertSingleCharToDoubleChar(title)}`;
+  // Build base directory path
+  const baseDirPath = `백준/${level.replace(/ .*/, "")}/${problemId}. ${convertSingleCharToDoubleChar(title)}`;
 
-  // 공통 업로드 서비스를 사용하여 디렉토리 경로 생성
-  const directory = await getDirNameByOrgOption(baseDirPath, processedLanguage, {
-    problemId,
-    title,
-    level,
-    problem_tags: problemTags,
-    memory,
-    runtime,
-    submissionTime,
-    language: processedLanguage,
-    problem_description: problemDescription,
-    problem_input: problemInput,
-    problem_output: problemOutput,
-  });
+  // Get directory from template
+  let directory: string;
+  try {
+    directory = await getDirNameByTemplate(baseDirPath, processedLanguage, {
+      problemId,
+      title,
+      level,
+      problemTags,
+      memory,
+      runtime,
+      submissionTime,
+      language: processedLanguage,
+      problemDescription,
+      problemInput,
+      problemOutput,
+    });
+  } catch (error) {
+    log.error("makeDetailMessageAndReadme - getDirNameByTemplate error:", error);
+    directory = baseDirPath;
+  }
 
-  const message = `[${level}] Title: ${runtime} ms, Memory: ${memory} KB${Number.isNaN(score) ? ' ' : `, Score: ${score} point `}-BaekjoonHub`;
-  const category = problemTags.join(', ');
-  const fileName = `${convertSingleCharToDoubleChar(title)}.${languages[language] || 'txt'}`;
+  // Build commit message
+  const message = `[${level}] Title: ${title}, Time: ${runtime} ms, Memory: ${memory} KB${Number.isNaN(score) ? "" : `, Score: ${score} point`} -SsafyToday`;
+
+  const category = problemTags.join(", ");
+  const fileName = `${convertSingleCharToDoubleChar(title)}.${getLanguageExtension(language)}`;
   const dateInfo = submissionTime ?? getDateString(new Date(Date.now()));
 
-  const readme =
-    `# [${level}] ${title} - ${problemId} \n\n` +
-    `[문제 링크](${urls.BAEKJOON_PROBLEM_URL}${problemId}) \n\n` +
-    `### 성능 요약\n\n` +
-    `메모리: ${memory} KB, ` +
-    `시간: ${runtime} ms\n\n` +
-    `### 분류\n\n` +
-    `${category || 'Empty'}\n\n${problemDescription ? `### 제출 일자\n\n${dateInfo}\n\n### 문제 설명\n\n${problemDescription}\n\n### 입력 \n\n ${problemInput}\n\n### 출력 \n\n ${problemOutput}\n\n` : ''}`;
+  // Build readme content using ReadmeBuilder
+  const readme = new ReadmeBuilder()
+    .addTitle(level, title, problemId)
+    .addProblemLink(`${urls.BAEKJOON_PROBLEM_URL}${problemId}`)
+    .addPerformance(`${memory} KB`, `${runtime} ms`)
+    .addTags(category || "Empty")
+    .addProblemDescription(problemDescription || "")
+    .addProblemInput(problemInput || "")
+    .addProblemOutput(problemOutput || "")
+    .addSubmissionDate(dateInfo || "")
+    .build();
 
   return {
     directory,
@@ -314,132 +330,326 @@ export async function makeDetailMessageAndReadme(
 }
 
 /**
- * bojData를 초기화하는 함수로 문제 요약과 코드를 파싱합니다.
+ * Find complete problem data for upload
+ * @param inputData - Input submission data
+ * @returns Complete problem data or null
  */
-export async function findData(
-  inputData: BaekjoonSubmission | null
-): Promise<(BaekjoonSubmission & DetailMessageAndReadme) | null> {
+export async function findData(inputData?: SubmissionData | null): Promise<Record<string, unknown> | null> {
   try {
-    const data = inputData;
+    let data = inputData;
+    log.debug("findData - inputData:", data);
+
+    // Get from result table if no input data (legacy compatibility)
     if (isNull(data)) {
+      log.debug("findData - No input data, searching from result table");
+
+      if (!isExistResultTable()) {
+        log.error("findData - Result table not found");
+        return null;
+      }
+
+      let table = parsingResultTableList();
+      if (isEmpty(table)) {
+        log.error("findData - Empty result table");
+        return null;
+      }
+
+      // Filter for accepted submissions
+      table = filter(table, {
+        resultCategory: RESULT_CATEGORY.RESULT_ACCEPTED,
+        username: findUsername() ?? undefined,
+        language: table[0]["language"],
+      }) as SubmissionData[];
+
+      if (isEmpty(table)) {
+        log.error("findData - No accepted submissions found");
+        return null;
+      }
+
+      data = selectBestSubmissionList(table)[0];
+    }
+
+    // Validate required data
+    if (isNull(data?.problemId) || isNull(data?.submissionId)) {
+      log.error("findData - Missing required data:", {
+        problemId: data?.problemId,
+        submissionId: data?.submissionId,
+      });
       return null;
     }
-    if (Number.isNaN(Number(data.problemId)) || Number(data.problemId) < 1000)
+
+    // Contest problem validation
+    if (Number.isNaN(Number(data.problemId)) || Number(data.problemId) < 1000) {
       throw new Error(
         `정책상 대회 문제는 업로드 되지 않습니다. 대회 문제가 아니라고 판단된다면 이슈로 남겨주시길 바랍니다.\n문제 ID: ${data.problemId}`
       );
-    const problemInfoAndCode = await findProblemInfoAndSubmissionCode(
-      data.problemId,
-      data.submissionId
-    );
-    if (!problemInfoAndCode) return null;
+    }
 
-    const mergedData = preProcessEmptyObj({ ...data, ...problemInfoAndCode }) as BaekjoonProblemData &
-      ProblemInfoAndCode;
-    const detail = await makeDetailMessageAndReadme(mergedData);
-    return { ...data, ...detail };
+    // Get problem info and code
+    const problemInfoAndCode = await findProblemInfoAndSubmissionCode(
+      data.problemId!,
+      data.submissionId!
+    );
+    log.debug("findData - problemInfoAndCode:", problemInfoAndCode);
+
+    if (isNull(problemInfoAndCode)) {
+      log.error("findData - Failed to fetch problem info and code");
+      return null;
+    }
+
+    // Merge data
+    const mergedData = preProcessEmptyObj({ ...data, ...problemInfoAndCode });
+    log.debug("findData - mergedData:", mergedData);
+
+    // Create detail info
+    const detail = await makeDetailMessageAndReadme(mergedData as Record<string, unknown>);
+    if (isNull(detail)) {
+      log.error("findData - Failed to create detail message and readme");
+      return null;
+    }
+
+    return { ...data, ...problemInfoAndCode, ...detail };
   } catch (error) {
-    console.error(error);
+    log.error("findData - Error:", error);
     return null;
   }
 }
 
 /**
- * 문제 설명을 파싱합니다.
+ * Parse problem description from document
+ * @param doc - HTML document (defaults to current document)
+ * @returns Problem description data
  */
 export function parseProblemDescription(doc: Document = document): ProblemDescription {
-  const problemDescriptionEl = doc.getElementById('problem_description');
-  if (problemDescriptionEl) {
-    convertImageTagToAbsoluteURL(doc);
-  }
+  log.debug("parseProblemDescription - doc:", doc);
 
-  const titleEl = doc.getElementsByTagName('title')[0];
-  const problemId = titleEl?.textContent?.split(':')[0]?.replace(/[^0-9]/, '') || '';
+  try {
+    // Convert relative image paths to absolute
+    const problemDescElement = doc.getElementById("problem_description");
+    if (problemDescElement) {
+      convertImageTagToAbsoluteURL(problemDescElement);
+    }
 
-  const problemDescription = problemDescriptionEl
-    ? unescapeHtml(problemDescriptionEl.innerHTML.trim())
-    : '';
-  const problemInputEl = doc.getElementById('problem_input');
-  const problemOutputEl = doc.getElementById('problem_output');
-  const problemInput = problemInputEl?.innerHTML?.trim() || 'Empty';
-  const problemOutput = problemOutputEl?.innerHTML?.trim() || 'Empty';
+    const titleElement = doc.querySelector("title");
+    const problemId = titleElement?.textContent?.split(":")[0]?.replace(/[^0-9]/g, "") || "";
 
-  if (problemId && problemDescription) {
-    log(`문제번호 ${problemId}의 내용을 저장합니다.`);
-    updateProblemData({
-      problemId,
-      problem_description: problemDescription,
-      problem_input: problemInput,
-      problem_output: problemOutput,
-    });
+    const problemDescription = problemDescElement
+      ? unescapeHtml(problemDescElement.innerHTML.trim())
+      : "";
+    const problemInputEl = doc.getElementById("problem_input");
+    const problemOutputEl = doc.getElementById("problem_output");
+
+    const problemInput = problemInputEl?.innerHTML?.trim()
+      ? unescapeHtml(problemInputEl.innerHTML.trim())
+      : "Empty";
+    const problemOutput = problemOutputEl?.innerHTML?.trim()
+      ? unescapeHtml(problemOutputEl.innerHTML.trim())
+      : "Empty";
+
     return {
       problemId,
       problemDescription,
       problemInput,
       problemOutput,
     };
+  } catch (error) {
+    log.error("parseProblemDescription - Error:", error);
+    return {
+      problemId: "",
+      problemDescription: "",
+      problemInput: "Empty",
+      problemOutput: "Empty",
+    };
   }
-  return {};
-}
-
-export async function fetchSolvedACById(problemId: number): Promise<SolvedACProblem> {
-  const message: SolvedApiCallMessage = {
-    sender: 'baekjoon',
-    task: 'SolvedApiCall',
-    problemId: String(problemId),
-  };
-  return chrome.runtime.sendMessage(message);
 }
 
 /**
- * 문제의 목록을 문제 번호로 한꺼번에 반환합니다.
- * (한번 조회 시 100개씩 나눠서 진행)
+ * Find unique best submissions by username
+ * @param username - Baekjoon username
+ * @returns Best submissions without duplicates
  */
-export async function fetchProblemInfoByIds(problemIds: string[][]): Promise<SolvedACProblem[]> {
-  const dividedProblemIds: string[][] = [];
+export async function findUniqueResultTableListByUsername(
+  username: string
+): Promise<SubmissionData[]> {
+  const resultList = await findResultTableListByUsername(username);
+  return selectBestSubmissionList(resultList);
+}
+
+/**
+ * Fetch problem description by ID
+ * @param problemId - Problem ID
+ * @returns Problem description data
+ */
+export async function fetchProblemDescriptionById(
+  problemId: string | number
+): Promise<ProblemDescription | null> {
+  log.debug("fetchProblemDescriptionById - fetching problemId:", problemId);
+
+  try {
+    const doc = await httpClient.getDocument(`${urls.BAEKJOON_PROBLEM_URL}${problemId}`);
+    log.debug("fetchProblemDescriptionById - fetched document");
+    return parseProblemDescription(doc);
+  } catch (error) {
+    log.error("fetchProblemDescriptionById - Error:", error);
+    return null;
+  }
+}
+
+/**
+ * Fetch submission code by ID
+ * @param submissionId - Submission ID
+ * @returns Code string or null
+ */
+export async function fetchSubmitCodeById(submissionId: string | number): Promise<string | null> {
+  try {
+    return await httpClient.getText(`${urls.BAEKJOON_SOURCE_DOWNLOAD_URL}${submissionId}`);
+  } catch (error) {
+    log.error("fetchSubmitCodeById - Error:", error);
+    return null;
+  }
+}
+
+/**
+ * Get problem description by ID (with caching)
+ * @param problemId - Problem ID
+ * @returns Problem description data
+ */
+export async function getProblemDescriptionById(
+  problemId: string | number
+): Promise<ProblemDescription | null> {
+  let problem: ProblemDescription | null = (await getProblemData(problemId)) as ProblemDescription | null;
+  log.debug("getProblemDescriptionById - cached problem:", problem);
+
+  if (isNull(problem)) {
+    problem = await fetchProblemDescriptionById(problemId);
+    log.debug("getProblemDescriptionById - fetched problem:", problem);
+    if (problem) {
+      updateProblemData(problem as unknown as { problemId: string });
+    }
+  }
+  return problem;
+}
+
+/**
+ * Get submission code by ID (with caching)
+ * @param submissionId - Submission ID
+ * @returns Code string or null
+ */
+export async function getSubmitCodeById(submissionId: string | number): Promise<string | null> {
+  let code = await getSubmitCodeData(submissionId);
+
+  if (isNull(code)) {
+    code = await fetchSubmitCodeById(submissionId);
+    if (code) {
+      updateSubmitCodeData({ submissionId, code });
+    }
+  }
+  return code;
+}
+
+/**
+ * Get Solved.ac data by problem ID (with caching)
+ * @param problemId - Problem ID
+ * @returns Solved.ac problem data or null
+ */
+export async function getSolvedACById(problemId: string | number): Promise<unknown | null> {
+  let jsonData = await getSolvedACData(problemId);
+
+  if (isNull(jsonData)) {
+    try {
+      log.debug(`Fetching solved.ac data for problemId: ${problemId}`);
+      jsonData = await chrome.runtime.sendMessage({
+        sender: "baekjoon",
+        task: "SolvedApiCall",
+        problemId,
+      });
+
+      if (jsonData) {
+        updateSolvedACData({ problemId, jsonData });
+      }
+    } catch (error) {
+      log.error("getSolvedACById - Error:", error);
+      return null;
+    }
+  }
+  return jsonData;
+}
+
+/**
+ * Find result table list by username (stub)
+ */
+async function findResultTableListByUsername(username: string): Promise<SubmissionData[]> {
+  // Stub implementation
+  return [];
+}
+
+/**
+ * Fetch Solved.ac data by problem ID via background script
+ * @param problemId - Problem ID
+ * @returns Solved.ac problem data
+ */
+export async function fetchSolvedACById(problemId: string | number): Promise<SolvedACProblem | null> {
+  return chrome.runtime.sendMessage({
+    sender: "baekjoon",
+    task: "SolvedApiCall",
+    problemId,
+  });
+}
+
+/**
+ * Fetch multiple problem infos by IDs (100 at a time)
+ * @param problemIds - Array of problem IDs
+ * @returns Array of problem data
+ */
+export async function fetchProblemInfoByIds(problemIds: (string | number)[][]): Promise<unknown[]> {
+  const dividedProblemIds: (string | number)[][] = [];
   for (const problemIdChunk of problemIds) {
     dividedProblemIds.push(problemIdChunk.slice(0, 100));
   }
   const results = await asyncPool(1, dividedProblemIds, async (pids) => {
-    const result = await fetch(
-      `https://solved.ac/api/v3/problem/lookup?problemIds=${pids.join('%2C')}`,
-      { method: 'GET' }
-    );
-    return result.json();
+    return httpClient.getJson(`https://solved.ac/api/v3/problem/lookup?problemIds=${pids.join("%2C")}`);
   });
-  return results.flatMap((result) => result);
+  return results.flatMap((result) => result as unknown[]);
 }
 
 /**
- * 문제의 상세 정보 목록을 문제 번호 목록으로 한꺼번에 반환합니다.
- * (한번 조회 시 2개씩 병렬로 진행)
+ * Fetch multiple problem descriptions by IDs (2 concurrent)
+ * @param problemIds - Array of problem IDs
+ * @returns Array of problem descriptions
  */
 export async function fetchProblemDescriptionsByIds(
-  problemIds: string[]
+  problemIds: (string | number)[]
 ): Promise<(ProblemDescription | null)[]> {
-  return asyncPool(2, problemIds, async (problemId) => getProblemDescriptionById(problemId));
+  return asyncPool(2, problemIds, async (problemId) =>
+    getProblemDescriptionById(problemId)
+  );
 }
 
 /**
- * submissionId들을 통해 코드들을 가져옵니다. (부하를 줄이기 위해 한번에 2개씩 가져옵니다.)
+ * Fetch multiple submission codes by IDs (2 concurrent)
+ * @param submissionIds - Array of submission IDs
+ * @returns Array of code strings
  */
-export async function fetchSubmissionCodeByIds(submissionIds: string[]): Promise<string[]> {
-  return asyncPool(2, submissionIds, async (submissionId) => getSubmitCodeById(submissionId));
+export async function fetchSubmissionCodeByIds(
+  submissionIds: (string | number)[]
+): Promise<(string | null)[]> {
+  return asyncPool(2, submissionIds, async (submissionId) =>
+    getSubmitCodeById(submissionId)
+  );
 }
 
 /**
- * user가 problemId 에 제출한 리스트를 가져오는 함수
+ * Find result table by problem ID and username
+ * @param problemId - Problem ID
+ * @param username - Baekjoon username
+ * @returns Array of submission data
  */
 export async function findResultTableByProblemIdAndUsername(
-  problemId: string,
+  problemId: string | number,
   username: string
-): Promise<BaekjoonSubmission[]> {
-  const html = await fetch(
-    `https://www.acmicpc.net/status?from_mine=1&problem_id=${problemId}&user_id=${username}`,
-    { method: 'GET' }
+): Promise<SubmissionData[]> {
+  const doc = await httpClient.getDocument(
+    `https://www.acmicpc.net/status?from_mine=1&problem_id=${problemId}&user_id=${username}`
   );
-  const text = await html.text();
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(text, 'text/html');
   return parsingResultTableList(doc);
 }

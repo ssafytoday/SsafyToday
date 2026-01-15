@@ -2,10 +2,10 @@
   "$schema": "https://json.schemastore.org/chrome-manifest.json",
   "manifest_version": 3,
   "name": "SsafyToday",
-  "description": "Automatically sync your competitive programming submissions to GitHub",
-  "homepage_url": "https://github.com/ssafytoday/SsafyToday",
-  "version": "3.2.0",
-  "author": "getCurrentThread",
+  "description": "SSAFY 교육생을 위한 코딩 풀이 자동 동기화 확장 프로그램",
+  "homepage_url": "https://ssafy.today",
+  "version": "3.3.0",
+  "author": "SsafyToday",
   "action": {
     "default_icon": "assets/thumbnail.png",
     "default_popup": "popup.html"
@@ -16,7 +16,7 @@
     "128": "assets/thumbnail.png"
   },
   "background": {
-    "service_worker": "background.js",
+    "service_worker": "scripts/commons/background.ts",
     "type": "module"
   },
   "declarative_net_request": {
@@ -40,8 +40,8 @@
     "https://github.com/",
     "https://swexpertacademy.com/",
     "https://solved.ac/api/v3/*",
-    "https://level.goorm.io/",
-    "https://ssafy.today/*"
+    "https://ssafy.today/*",
+    "wss://ssafy.today/*"
   ],
   "web_accessible_resources": [
     {
@@ -50,19 +50,28 @@
       ],
       "resources": [
         "popup.html",
-        "popup.js",
+        "popup.ts",
         "settings.html",
-        "settings.js"
+        "settings.ts"
       ]
     }
   ],
   "content_scripts": [
     {
       "matches": [
+        "https://ssafy.today/*"
+      ],
+      "js": [
+        "scripts/commons/ssafy-verify.ts"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
         "https://github.com/*"
       ],
       "js": [
-        "authorize.js"
+        "scripts/commons/authorize.ts"
       ],
       "run_at": "document_idle"
     },
@@ -71,10 +80,10 @@
         "https://www.acmicpc.net/*"
       ],
       "css": [
-        "css/baekjoon/inject.css"
+        "baekjoon/inject.css"
       ],
       "js": [
-        "baekjoon.js"
+        "scripts/baekjoon/baekjoon.ts"
       ],
       "run_at": "document_idle"
     },
@@ -83,10 +92,10 @@
         "https://school.programmers.co.kr/*"
       ],
       "css": [
-        "css/programmers/inject.css"
+        "programmers/inject.css"
       ],
       "js": [
-        "programmers.js"
+        "scripts/programmers/programmers.ts"
       ],
       "run_at": "document_idle"
     },
@@ -95,31 +104,10 @@
         "https://swexpertacademy.com/*"
       ],
       "css": [
-        "css/swexpertacademy/inject.css"
+        "swexpertacademy/inject.css"
       ],
       "js": [
-        "swexpertacademy.js"
-      ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "https://level.goorm.io/*"
-      ],
-      "css": [
-        "css/goormlevel/inject.css"
-      ],
-      "js": [
-        "goormlevel.js"
-      ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "https://ssafy.today/*"
-      ],
-      "js": [
-        "ssafytoday.js"
+        "scripts/swexpertacademy/swexpertacademy.ts"
       ],
       "run_at": "document_idle"
     }

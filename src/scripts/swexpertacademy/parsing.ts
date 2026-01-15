@@ -1,25 +1,33 @@
-import { log, isNull, convertSingleCharToDoubleChar } from '@/commons/util';
-import { getProblemData, updateProblemData } from '@/swexpertacademy/storage';
-import { languages } from '@/swexpertacademy/variables';
-import { getNickname } from '@/swexpertacademy/util';
-import { getDirNameByOrgOption } from '@/commons/storage';
-import urls from '@/constants/url';
+/**
+ * SWEA platform parsing functions
+ * Handles problem description and submission code parsing
+ */
+import { isNull, convertSingleCharToDoubleChar } from "@/commons/util";
+import { getProblemData, updateProblemData } from "@/swexpertacademy/storage";
+import { languages } from "@/swexpertacademy/variables";
+import { getNickname } from "@/swexpertacademy/util";
+import { getDirNameByTemplate } from "@/commons/storage";
+import urls from "@/constants/url";
+import log from "@/commons/logger";
+import { ReadmeBuilder } from "@/commons/readme-builder";
 
-interface SWEAOriginData {
+// Problem origin data interface
+interface SWEAProblemOrigin {
   link: string;
   problemId: string;
   level: string;
+  languageExtension: string;
   title: string;
-  extension: string;
-  code: string;
   runtime: string;
   memory: string;
+  code: string;
   length: string;
   submissionTime: string;
   language: string;
 }
 
-interface SWEAData {
+// Parsed problem data interface
+interface ParsedProblemData {
   problemId: string;
   directory: string;
   message: string;
@@ -28,34 +36,52 @@ interface SWEAData {
   code: string;
 }
 
+// Parse code result interface
 interface ParseCodeResult {
   problemId: string;
   contestProbId: string;
 }
 
+/**
+ * Update text source event for code editor synchronization
+ */
 export function updateTextSourceEvent(): void {
-  document.documentElement.setAttribute('onreset', 'cEditor.save();');
-  document.documentElement.dispatchEvent(new CustomEvent('reset'));
-  document.documentElement.removeAttribute('onreset');
+  document.documentElement.setAttribute("onreset", "cEditor.save();");
+  document.documentElement.dispatchEvent(new CustomEvent("reset"));
+  document.documentElement.removeAttribute("onreset");
 }
 
-export async function makeData(origin: SWEAOriginData): Promise<SWEAData> {
-  const { link, problemId, level, extension, title, runtime, memory, code, length, submissionTime, language } = origin;
-  /*
-   * SWEA의 경우에는 JAVA 같이 모두 대문자인 경우가 존재합니다. 하지만 타 플랫폼들(백준, 프로그래머스)는 첫문자가 모두 대문자로 시작합니다.
-   * 그래서 이와 같은 케이스를 처리를 위해 첫문자만 대문자를 유지하고 나머지 문자는 소문자로 변환합니다.
-   * C++ 같은 경우에는 문자가 그대로 유지됩니다.
-   */
+/**
+ * Create upload data from parsed problem info
+ * @param origin - Original problem data
+ * @returns Formatted data for upload
+ */
+export async function makeData(origin: SWEAProblemOrigin): Promise<ParsedProblemData> {
+  const {
+    link,
+    problemId,
+    level,
+    languageExtension,
+    title,
+    runtime,
+    memory,
+    code,
+    length,
+    submissionTime,
+    language,
+  } = origin;
+
+  // Normalize language case (SWEA uses all uppercase like "JAVA")
   const lang =
     language === language.toUpperCase()
       ? language.substring(0, 1) + language.substring(1).toLowerCase()
       : language;
 
-  // 기본 디렉토리 경로 생성
+  // Build base directory path
   const baseDirPath = `SWEA/${level}/${problemId}. ${convertSingleCharToDoubleChar(title)}`;
 
-  // 공통 업로드 서비스를 사용하여 디렉토리 경로 생성
-  const directory = await getDirNameByOrgOption(baseDirPath, lang, {
+  // Get directory from template
+  const directory = await getDirNameByTemplate(baseDirPath, lang, {
     problemId,
     title,
     level,
@@ -67,21 +93,17 @@ export async function makeData(origin: SWEAOriginData): Promise<SWEAData> {
     link,
   });
 
-  const message = `[${level}] Title: ${title}, Time: ${runtime}, Memory: ${memory} -BaekjoonHub`;
-  const fileName = `${convertSingleCharToDoubleChar(title)}.${extension}`;
+  const message = `[${level}] Title: ${title}, Time: ${runtime}, Memory: ${memory} -SsafyToday`;
+  const fileName = `${convertSingleCharToDoubleChar(title)}.${languageExtension}`;
   const dateInfo = submissionTime;
 
-  const readme =
-    `# [${level}] ${title} - ${problemId} \n\n` +
-    `[문제 링크](${urls.SWEA_PROBLEM_DETAIL_URL}) \n\n` +
-    `### 성능 요약\n\n` +
-    `메모리: ${memory}, ` +
-    `시간: ${runtime}, ` +
-    `코드길이: ${length} Bytes\n\n` +
-    `### 제출 일자\n\n` +
-    `${dateInfo}\n\n` +
-    `\n\n` +
-    `> 출처: SW Expert Academy, https://swexpertacademy.com/main/code/problem/problemList.do`;
+  const readme = new ReadmeBuilder()
+    .addTitle(level, title, problemId)
+    .addProblemLink(urls.SWEA_PROBLEM_DETAIL_URL)
+    .addPerformance(memory, runtime, `${length} Bytes`)
+    .addSubmissionDate(dateInfo)
+    .addSource("SW Expert Academy", "https://swexpertacademy.com/main/code/problem/problemList.do")
+    .build();
 
   return {
     problemId,
@@ -94,117 +116,155 @@ export async function makeData(origin: SWEAOriginData): Promise<SWEAData> {
 }
 
 /**
- * 문제를 정상적으로 풀면 제출한 소스코드를 파싱하고, 로컬스토리지에 저장하는 함수입니다。
+ * Parse and store submission code
+ * @returns Parse code result with problemId and contestProbId
  */
-export async function parseCode(): Promise<ParseCodeResult> {
-  const problemIdEl = document.querySelector('div.problem_box > h3');
-  const problemId = problemIdEl?.textContent?.replace(/\..*$/, '').trim() || '';
+export async function parseCode(): Promise<ParseCodeResult | undefined> {
+  const problemIdEl = document.querySelector("div.problem_box > h3");
+  if (!problemIdEl) {
+    log.error("parseCode: 문제번호 요소를 찾을 수 없습니다.");
+    return;
+  }
+  const problemId = problemIdEl.textContent?.replace(/\..*$/, "").trim() || "";
 
-  const contestProbIdElements = [...document.querySelectorAll('#contestProbId')] as HTMLInputElement[];
-  const contestProbId = contestProbIdElements.slice(-1)[0]?.value || '';
+  const contestProbIdElements = document.querySelectorAll("#contestProbId");
+  if (contestProbIdElements.length === 0) {
+    log.error("parseCode: contestProbId 요소를 찾을 수 없습니다.");
+    return;
+  }
+  const contestProbId = (
+    [...contestProbIdElements].slice(-1)[0] as HTMLInputElement
+  ).value;
 
   updateTextSourceEvent();
-
-  const codeEl = document.querySelector('#textSource') as HTMLTextAreaElement | null;
-  const code = codeEl?.value || '';
+  const textSourceEl = document.querySelector("#textSource") as HTMLTextAreaElement | null;
+  const code = textSourceEl?.value || "";
 
   await updateProblemData(problemId, { code, contestProbId });
   return { problemId, contestProbId };
 }
 
-/*
-  문제 요약과 코드를 파싱합니다.
-  - directory : 레포에 기록될 폴더명
-  - message : 커밋 메시지
-  - fileName : 파일명
-  - readme : README.md에 작성할 내용
-  - code : 소스코드 내용
-*/
-export async function parseData(): Promise<SWEAData | undefined> {
-  const searchInput = document.querySelector('#searchinput') as HTMLInputElement | null;
-  const nickname = searchInput?.value || '';
+/**
+ * Parse problem data from the current page
+ * @returns Parsed problem data for upload
+ */
+export async function parseData(): Promise<ParsedProblemData | undefined> {
+  const searchInputElement = document.querySelector("#searchinput") as HTMLInputElement | null;
+  if (!searchInputElement) {
+    log.error("parseData: #searchinput 요소를 찾을 수 없습니다.");
+    return;
+  }
+  const nickname = searchInputElement.value;
 
-  log('사용자 로그인 정보 및 유무 체크', nickname, document.querySelector('#problemForm div.info'));
-
-  // 검색하는 유저 정보와 로그인한 유저의 닉네임이 같은지 체크
-  // PASS를 맞은 기록 유무 체크
-  if (getNickname() !== nickname) return undefined;
-  if (isNull(document.querySelector('#problemForm div.info'))) return undefined;
-
-  log('결과 데이터 파싱 시작');
-
-  const titleEl = document.querySelector('div.problem_box > p.problem_title');
-  const title = titleEl?.textContent
-    ?.replace(/ D[0-9]$/, '')
-    .replace(/^[^.]*/, '')
-    .substring(1)
-    .trim() || '';
-
-  // 레벨
-  const levelEl = document.querySelector('div.problem_box > p.problem_title > span.badge');
-  const level = levelEl?.textContent || 'Unrated';
-
-  // 문제번호
-  const problemIdEl = document.querySelector(
-    'body > div.container > div.container.sub > div > div.problem_box > p'
+  log.debug(
+    "사용자 로그인 정보 및 유무 체크",
+    nickname,
+    document.querySelector("#problemForm div.info")
   );
-  const problemId = problemIdEl?.textContent?.split('.')[0].trim() || '';
 
-  // 문제 콘테스트 인덱스
-  const contestProbIdElements = [...document.querySelectorAll('#contestProbId')] as HTMLInputElement[];
-  const contestProbId = contestProbIdElements.slice(-1)[0]?.value || '';
+  // Check if user matches and has PASS record
+  if (getNickname() !== nickname) return;
+  if (isNull(document.querySelector("#problemForm div.info"))) return;
 
-  // 문제 링크
+  log.debug("결과 데이터 파싱 시작");
+
+  const titleElement = document.querySelector("div.problem_box > p.problem_title");
+  if (!titleElement) {
+    log.error("parseData: 문제 제목 요소를 찾을 수 없습니다.");
+    return;
+  }
+  const title = titleElement.textContent
+    ?.replace(/ D[0-9]$/, "")
+    .replace(/^[^.]*/, "")
+    .substring(1)
+    .trim() || "";
+
+  // Level
+  const levelEl = document.querySelector("div.problem_box > p.problem_title > span.badge");
+  const level = levelEl?.textContent || "Unrated";
+
+  // Problem ID
+  const problemIdElement = document.querySelector(
+    "body > div.container > div.container.sub > div > div.problem_box > p"
+  );
+  if (!problemIdElement) {
+    log.error("parseData: 문제번호 요소를 찾을 수 없습니다.");
+    return;
+  }
+  const problemId = problemIdElement.textContent?.split(".")[0].trim() || "";
+
+  // Contest problem ID
+  const contestProbIdElements = document.querySelectorAll("#contestProbId");
+  if (contestProbIdElements.length === 0) {
+    log.error("contestProbId 요소를 찾을 수 없습니다.");
+    return;
+  }
+  const contestProbId = (
+    [...contestProbIdElements].slice(-1)[0] as HTMLInputElement
+  ).value;
+
+  // Problem link
   const link = `${urls.SWEA_PROBLEM_DETAIL_URL}?contestProbId=${contestProbId}`;
 
-  // 문제 언어, 메모리, 시간소요
-  const languageEl = document.querySelector(
-    '#problemForm div.info > ul > li:nth-child(1) > span:nth-child(1)'
+  // Language, memory, runtime, length
+  const languageElement = document.querySelector(
+    "#problemForm div.info > ul > li:nth-child(1) > span:nth-child(1)"
   );
-  const language = languageEl?.textContent?.trim() || '';
-
-  const memoryEl = document.querySelector(
-    '#problemForm div.info > ul > li:nth-child(2) > span:nth-child(1)'
+  const memoryElement = document.querySelector(
+    "#problemForm div.info > ul > li:nth-child(2) > span:nth-child(1)"
   );
-  const memory = memoryEl?.textContent?.trim().toUpperCase() || '';
-
-  const runtimeEl = document.querySelector(
-    '#problemForm div.info > ul > li:nth-child(3) > span:nth-child(1)'
+  const runtimeElement = document.querySelector(
+    "#problemForm div.info > ul > li:nth-child(3) > span:nth-child(1)"
   );
-  const runtime = runtimeEl?.textContent?.trim() || '';
-
-  const lengthEl = document.querySelector(
-    '#problemForm div.info > ul > li:nth-child(4) > span:nth-child(1)'
+  const lengthElement = document.querySelector(
+    "#problemForm div.info > ul > li:nth-child(4) > span:nth-child(1)"
   );
-  const length = lengthEl?.textContent?.trim() || '';
 
-  // 확장자명
-  const extension = languages[language.toLowerCase()] || 'txt';
-
-  // 제출날짜
-  const submissionTimeEl = document.querySelector('.smt_txt > dd');
-  const submissionTimeMatch = submissionTimeEl?.textContent?.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/g);
-  const submissionTime = submissionTimeMatch?.[0] || '';
-
-  // 로컬스토리지에서 기존 코드에 대한 정보를 불러올 수 없다면 코드 디테일 창으로 이동 후 제출하도록 이동
-  const data = await getProblemData(problemId);
-  log('data', data);
-
-  if (isNull(data?.code)) {
-    console.error('소스코드 데이터가 없습니다.');
-    return undefined;
+  if (!languageElement || !memoryElement || !runtimeElement || !lengthElement) {
+    log.error("문제 정보 요소들을 찾을 수 없습니다.");
+    return;
   }
 
+  const language = languageElement.textContent?.trim() || "";
+  const memory = memoryElement.textContent?.trim().toUpperCase() || "";
+  const runtime = runtimeElement.textContent?.trim() || "";
+  const length = lengthElement.textContent?.trim() || "";
+
+  // File extension
+  const languageExtension = languages[language.toLowerCase()] || "txt";
+
+  // Submission time
+  const submissionTimeElement = document.querySelector(".smt_txt > dd");
+  if (!submissionTimeElement) {
+    log.error("제출 시간 요소를 찾을 수 없습니다.");
+    return;
+  }
+  const submissionTimeMatch = submissionTimeElement.textContent?.match(
+    /\d{4}-\d{2}-\d{2} \d{2}:\d{2}/g
+  );
+  if (!submissionTimeMatch || submissionTimeMatch.length === 0) {
+    log.error("제출 시간 형식을 파싱할 수 없습니다.");
+    return;
+  }
+  const submissionTime = submissionTimeMatch[0];
+
+  // Get cached code from storage
+  const data = await getProblemData(problemId);
+  log.debug("data", data);
+  if (isNull(data?.code)) {
+    log.error("소스코드 데이터가 없습니다.");
+    return;
+  }
   const { code } = data;
-  log('파싱 완료');
+  log.debug("파싱 완료");
 
   return makeData({
     link,
     problemId,
     level,
     title,
-    extension,
-    code: code || '',
+    languageExtension,
+    code,
     runtime,
     memory,
     length,

@@ -1,113 +1,122 @@
-import urls from '@/constants/url';
-import { STORAGE_KEYS } from '@/constants/registry';
-import type {
-  ExtensionMessage,
-  SolvedApiCallMessage,
-  OAuthResultMessage,
-  SolvedACProblem,
-} from '@types';
+/**
+ * Background service worker for SsafyToday Chrome Extension
+ * Handles messaging, Solved.ac API calls, authentication flow, and migration
+ */
+import urls from "@/constants/url";
+import { STORAGE_KEYS } from "@/constants/registry";
+import log from "@/commons/logger";
+import { runMigrationSafely } from "./migration";
+
+// Message request interface
+interface MessageRequest {
+  closeWebPage?: boolean;
+  isSuccess?: boolean;
+  username?: string;
+  token?: string;
+  KEY?: string;
+  sender?: string;
+  task?: string;
+  problemId?: number;
+}
+
+// Solved.ac problem response interface
+interface SolvedAcProblem {
+  problemId: number;
+  titleKo: string;
+  level: number;
+  tags: Array<{
+    key: string;
+    displayNames: Array<{
+      language: string;
+      name: string;
+    }>;
+  }>;
+  [key: string]: unknown;
+}
 
 /**
- * Solved.ac API를 통해 문제 데이터를 가져옵니다.
- * @param problemId - 백준 문제 번호
- * @returns Promise<SolvedACProblem>
+ * Fetch problem data from Solved.ac API
+ * @param problemId - Baekjoon problem ID
+ * @returns Problem data from Solved.ac
  */
-export async function SolvedApiCall(problemId: number): Promise<SolvedACProblem> {
+export async function SolvedApiCall(problemId: number): Promise<SolvedAcProblem> {
   const response = await fetch(`${urls.SOLVED_AC_API_PROBLEM_SHOW_URL}${problemId}`, {
-    method: 'GET',
+    method: "GET",
   });
   return response.json();
 }
 
 /**
- * Extension 메시지 핸들러
- * OAuth 인증 결과와 Solved.ac API 호출을 처리합니다.
- *
- * @param request - 메시지 요청
- * @param _sender - 메시지 발신자
- * @param sendResponse - 응답 콜백
- * @returns true (비동기 응답을 위해)
+ * Handle messages from content scripts and popup
+ * @param request - Message request object
+ * @param sender - Message sender info
+ * @param sendResponse - Response callback function
+ * @returns true to indicate async response
  */
 export function handleMessage(
-  request: ExtensionMessage,
-  _sender: chrome.runtime.MessageSender,
-  sendResponse: (response?: SolvedACProblem) => void
+  request: MessageRequest,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response?: unknown) => void
 ): boolean {
-  // OAuth 성공 메시지 처리
-  if (isOAuthSuccessMessage(request)) {
-    /* Set username */
-    chrome.storage.local.set({ [STORAGE_KEYS.USERNAME]: request.username }, () => {
-      /* Set token */
-      chrome.storage.local.set({ [STORAGE_KEYS.TOKEN]: request.token }, () => {
-        /* Close pipe */
-        chrome.storage.local.set({ [STORAGE_KEYS.PIPE]: false }, () => {
-          console.log('Closed pipe.');
+  log.info("background.ts: handleMessage called with request:", request);
 
-          /* Go to onboarding for UX */
+  if (request && request.closeWebPage === true && request.isSuccess === true) {
+    // Authentication successful - save credentials
+    chrome.storage.local.set({ [STORAGE_KEYS.USERNAME]: request.username }, () => {
+      log.info("background.ts: Username saved to local storage.");
+
+      chrome.storage.local.set({ [STORAGE_KEYS.TOKEN]: request.token }, () => {
+        log.info("background.ts: Token saved to local storage.");
+
+        // Close pipe
+        chrome.storage.local.set({ [STORAGE_KEYS.PIPE]: false }, () => {
+          log.info("Closed pipe.");
+
+          // Open settings page for onboarding
           const urlOnboarding = `chrome-extension://${chrome.runtime.id}/settings.html`;
           chrome.tabs.create({ url: urlOnboarding, selected: true });
         });
       });
     });
-  }
-  // OAuth 실패 메시지 처리
-  else if (isOAuthFailureMessage(request)) {
-    console.error('Something went wrong while trying to authenticate your profile!');
+  } else if (request && request.closeWebPage === true && request.isSuccess === false) {
+    // Authentication failed
+    log.error("background.ts: Something went wrong while trying to authenticate your profile!");
     chrome.tabs.getCurrent((tab) => {
       if (tab?.id) {
         chrome.tabs.remove(tab.id);
       }
     });
+  } else if (request && request.sender === "baekjoon" && request.task === "SolvedApiCall") {
+    // Solved.ac API call request
+    SolvedApiCall(request.problemId!).then((res) => sendResponse(res));
   }
-  // Solved.ac API 호출 처리
-  else if (isSolvedApiCallMessage(request)) {
-    SolvedApiCall(parseInt(request.problemId, 10)).then((res) => sendResponse(res));
-  }
 
-  return true;
+  return true; // Indicates async response
 }
 
-/**
- * OAuth 성공 메시지 타입 가드
- */
-function isOAuthSuccessMessage(
-  message: ExtensionMessage
-): message is OAuthResultMessage & { isSuccess: true; token: string; username: string } {
-  return (
-    'closeWebPage' in message &&
-    message.closeWebPage === true &&
-    'isSuccess' in message &&
-    message.isSuccess === true &&
-    'token' in message &&
-    'username' in message
-  );
-}
-
-/**
- * OAuth 실패 메시지 타입 가드
- */
-function isOAuthFailureMessage(
-  message: ExtensionMessage
-): message is OAuthResultMessage & { isSuccess: false } {
-  return (
-    'closeWebPage' in message &&
-    message.closeWebPage === true &&
-    'isSuccess' in message &&
-    message.isSuccess === false
-  );
-}
-
-/**
- * Solved.ac API 호출 메시지 타입 가드
- */
-function isSolvedApiCallMessage(message: ExtensionMessage): message is SolvedApiCallMessage {
-  return (
-    'sender' in message &&
-    message.sender === 'baekjoon' &&
-    'task' in message &&
-    message.task === 'SolvedApiCall'
-  );
-}
-
-// 메시지 리스너 등록
+// Register message listener
 chrome.runtime.onMessage.addListener(handleMessage);
+
+/**
+ * Handle extension install/update events
+ * Runs migration when extension is installed or updated
+ */
+chrome.runtime.onInstalled.addListener(async (details) => {
+  log.info("background.ts: onInstalled event fired with reason:", details.reason);
+
+  if (details.reason === "install" || details.reason === "update") {
+    log.info("background.ts: Running migration check...");
+
+    const result = await runMigrationSafely();
+
+    if (result.success) {
+      if (result.migratedKeys.length > 0) {
+        log.info("background.ts: Migration completed successfully. Migrated keys:", result.migratedKeys);
+      } else {
+        log.info("background.ts: No migration needed or already completed.");
+      }
+    } else {
+      log.error("background.ts: Migration failed:", result.errors);
+    }
+  }
+});

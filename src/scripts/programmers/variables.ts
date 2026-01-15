@@ -1,8 +1,13 @@
-/* 프로그래머스의 전역 변수 선언 파일입니다. */
-import constants from '@/constants/code';
-import type { UploadState } from '@types';
+/**
+ * Programmers Hub global variables declaration file
+ * Includes constants and shared state
+ */
+import constants from "@/constants/code";
+import { createUploadState } from "@/commons/shared-state";
+import type { UploadState } from "@/types/platform";
 
+// Re-export constants for backward compatibility
 export const levels = constants.programmersLevels;
 
-/* state of upload for progress */
-export const uploadState: UploadState = { uploading: false };
+// Upload state using shared factory
+export const uploadState: UploadState = createUploadState();

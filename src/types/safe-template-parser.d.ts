@@ -1,7 +1,14 @@
-declare module 'safe-template-parser' {
+/**
+ * Type declarations for safe-template-parser module
+ */
+declare module "safe-template-parser" {
+  export interface TextTransforms {
+    [key: string]: (value: string) => string;
+  }
+
   export function parseTemplateString(
     template: string,
     data: Record<string, unknown>,
-    transforms?: Record<string, (value: string, ...args: string[]) => string>
+    transforms?: TextTransforms
   ): string;
 }

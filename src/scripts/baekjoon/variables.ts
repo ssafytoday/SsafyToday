@@ -1,27 +1,50 @@
-/* 백준 허브의 전역 변수 선언 파일입니다. */
-/* 포함된 변수는 다음과 같습니다.
-    levels: 현재 등록된 프로그래머스 연습 문제의 레벨 구분입니다.
-    uploadState: 현재 업로드 중인지를 저장하는 boolean입니다.
-*/
+/**
+ * Baekjoon Hub global variables declaration file
+ * Includes constants and shared state
+ */
+import constants from "@/constants/code";
+import { createUploadState } from "@/commons/shared-state";
+import type { UploadState } from "@/types/platform";
 
-import constants from '@/constants/code';
-import type { UploadState } from '@types';
+// Import new flexible language system
+import {
+  languages as flexibleLanguages,
+  getLanguageExtension,
+  isLanguageSupported,
+  getSupportedLanguages,
+  addLanguageMapping,
+  extractBaseLangName,
+  normalizeLangName,
+} from "@/baekjoon/languages";
 
-export const languages = constants.languages;
+// Re-export constants for backward compatibility
+// Use new flexible language system instead of hardcoded constants
+export const languages = flexibleLanguages;
 export const bjLevel = constants.bjLevel;
 export const RESULT_CATEGORY = constants.RESULT_CATEGORY;
 export const RESULT_MESSAGE = constants.RESULT_MESSAGE;
 
-/* state of upload for progress */
-export const uploadState: UploadState = { uploading: false };
+// Re-export language utilities for convenience
+export {
+  getLanguageExtension,
+  isLanguageSupported,
+  getSupportedLanguages,
+  addLanguageMapping,
+  extractBaseLangName,
+  normalizeLangName,
+};
 
-export interface MultiloaderState {
+// Upload state using shared factory
+export const uploadState: UploadState = createUploadState();
+
+// Multi-loader state for batch operations
+export interface MultiLoaderState {
   wrap: HTMLElement | null;
   nom: HTMLElement | null;
   denom: HTMLElement | null;
 }
 
-export const multiloader: MultiloaderState = {
+export const multiloader: MultiLoaderState = {
   wrap: null,
   nom: null,
   denom: null,

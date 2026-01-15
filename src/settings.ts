@@ -1,10 +1,15 @@
-import { getObjectFromLocalStorage, saveObjectInLocalStorage } from '@/commons/storage';
-import { STORAGE_KEYS } from '@/constants/registry';
-import beginOAuth2 from '@/commons/oauth2';
-import { parseTemplateString } from 'safe-template-parser';
-import { getTextTransforms } from '@/commons/text-transforms';
+/**
+ * SsafyToday Settings Entry Point
+ * Handles settings page UI, repository connection, and template builder
+ */
+import { getObjectFromLocalStorage, saveObjectInLocalStorage } from "./scripts/commons/storage";
+import { STORAGE_KEYS } from "./scripts/constants/registry";
+import beginOAuth2 from "./scripts/commons/oauth2";
+import { parseTemplateString, TextTransforms as SafeTextTransforms } from "safe-template-parser";
+import { getTextTransforms } from "./scripts/commons/text-transforms";
+import log from "./scripts/commons/logger";
 
-// 설정 상태 관리
+// Interfaces
 interface AppSettings {
   connected: boolean;
   repoName: string;
@@ -13,15 +18,6 @@ interface AppSettings {
   templateString: string;
 }
 
-const appSettings: AppSettings = {
-  connected: false,
-  repoName: '',
-  autoUpload: true,
-  useCustomTemplate: false,
-  templateString: '{{platform}}/{{language}}/{{removeAfterSpace(level)}}/{{problemId}}. {{safe(title)}}',
-};
-
-// GitHub 사용자 정보 및 저장소 목록
 interface GitHubRepository {
   name: string;
   fullName: string;
@@ -34,19 +30,12 @@ interface GitHubUserInfo {
   repositories: GitHubRepository[];
 }
 
-const githubUserInfo: GitHubUserInfo = {
-  username: '',
-  repositories: [],
-};
-
-// DOM 요소들
-interface Elements {
+interface SettingsElements {
   connectionStatus: HTMLElement | null;
   errorMessage: HTMLElement | null;
   successMessage: HTMLElement | null;
   setupSection: HTMLElement | null;
   settingsSection: HTMLElement | null;
-  ssafyApiSection: HTMLElement | null;
   managementSection: HTMLElement | null;
   repoType: HTMLSelectElement | null;
   repoName: HTMLInputElement | null;
@@ -60,59 +49,103 @@ interface Elements {
   unlinkRepo: HTMLButtonElement | null;
   saveTemplate: HTMLButtonElement | null;
   resetTemplate: HTMLButtonElement | null;
-  testApiConnection: HTMLButtonElement | null;
-  apiStatusIcon: HTMLElement | null;
-  apiStatusBadge: HTMLElement | null;
+  // SSAFY Today elements
+  ssafySection: HTMLElement | null;
+  ssafyStatusBadge: HTMLElement | null;
+  testSsafyConnection: HTMLButtonElement | null;
 }
 
-const elements: Elements = {
-  connectionStatus: document.getElementById('connectionStatus'),
-  errorMessage: document.getElementById('errorMessage'),
-  successMessage: document.getElementById('successMessage'),
-  setupSection: document.getElementById('setupSection'),
-  settingsSection: document.getElementById('settingsSection'),
-  ssafyApiSection: document.getElementById('ssafyApiSection'),
-  managementSection: document.getElementById('managementSection'),
-  repoType: document.getElementById('repoType') as HTMLSelectElement | null,
-  repoName: document.getElementById('repoName') as HTMLInputElement | null,
-  repoSelect: document.getElementById('repoSelect') as HTMLSelectElement | null,
-  connectRepo: document.getElementById('connectRepo') as HTMLButtonElement | null,
-  autoUpload: document.getElementById('autoUpload') as HTMLInputElement | null,
-  useCustomTemplate: document.getElementById('useCustomTemplate') as HTMLInputElement | null,
-  customTemplateInput: document.getElementById('customTemplateInput'),
-  templateString: document.getElementById('templateString') as HTMLInputElement | null,
-  templatePreview: document.getElementById('templatePreview'),
-  unlinkRepo: document.getElementById('unlinkRepo') as HTMLButtonElement | null,
-  saveTemplate: document.getElementById('saveTemplate') as HTMLButtonElement | null,
-  resetTemplate: document.getElementById('resetTemplate') as HTMLButtonElement | null,
-  testApiConnection: document.getElementById('testApiConnection') as HTMLButtonElement | null,
-  apiStatusIcon: document.getElementById('apiStatusIcon'),
-  apiStatusBadge: document.getElementById('apiStatusBadge'),
+// Settings state
+let appSettings: AppSettings = {
+  connected: false,
+  repoName: "",
+  autoUpload: true,
+  useCustomTemplate: false,
+  templateString: "{{language}}/{{removeAfterSpace(level)}}/{{problemId}}. {{safe(title)}}",
 };
 
-// 유틸리티 함수들
-function showMessage(type: 'error' | 'success', text: string, autoHide = true): void {
-  const messageEl = elements[`${type}Message` as keyof Elements] as HTMLElement | null;
+// GitHub user info
+let githubUserInfo: GitHubUserInfo = {
+  username: "",
+  repositories: [],
+};
+
+// DOM elements (initialized after DOM load)
+let elements: SettingsElements;
+
+/**
+ * Initialize DOM elements
+ */
+function initElements(): void {
+  elements = {
+    connectionStatus: document.getElementById("connectionStatus"),
+    errorMessage: document.getElementById("errorMessage"),
+    successMessage: document.getElementById("successMessage"),
+    setupSection: document.getElementById("setupSection"),
+    settingsSection: document.getElementById("settingsSection"),
+    managementSection: document.getElementById("managementSection"),
+    repoType: document.getElementById("repoType") as HTMLSelectElement | null,
+    repoName: document.getElementById("repoName") as HTMLInputElement | null,
+    repoSelect: document.getElementById("repoSelect") as HTMLSelectElement | null,
+    connectRepo: document.getElementById("connectRepo") as HTMLButtonElement | null,
+    autoUpload: document.getElementById("autoUpload") as HTMLInputElement | null,
+    useCustomTemplate: document.getElementById("useCustomTemplate") as HTMLInputElement | null,
+    customTemplateInput: document.getElementById("customTemplateInput"),
+    templateString: document.getElementById("templateString") as HTMLInputElement | null,
+    templatePreview: document.getElementById("templatePreview"),
+    unlinkRepo: document.getElementById("unlinkRepo") as HTMLButtonElement | null,
+    saveTemplate: document.getElementById("saveTemplate") as HTMLButtonElement | null,
+    resetTemplate: document.getElementById("resetTemplate") as HTMLButtonElement | null,
+    // SSAFY Today elements
+    ssafySection: document.getElementById("ssafySection"),
+    ssafyStatusBadge: document.getElementById("ssafyStatusBadge"),
+    testSsafyConnection: document.getElementById("testSsafyConnection") as HTMLButtonElement | null,
+  };
+}
+
+/**
+ * Open repository URL in new tab
+ */
+function openRepositoryURL(repoName: string): void {
+  if (repoName && repoName.includes("/")) {
+    const githubURL = `https://github.com/${repoName}`;
+    window.open(githubURL, "_blank");
+    log.debug("Opening repository URL:", githubURL);
+  } else {
+    log.error("Invalid repository name:", repoName);
+  }
+}
+
+/**
+ * Show message notification
+ */
+function showMessage(type: "error" | "success", text: string, autoHide = true): void {
+  const messageEl = elements[`${type}Message` as keyof SettingsElements] as HTMLElement | null;
   if (!messageEl) return;
 
   messageEl.textContent = text;
-  messageEl.style.display = 'block';
+  messageEl.style.display = "block";
 
   if (autoHide) {
     setTimeout(() => {
-      messageEl.style.display = 'none';
+      messageEl.style.display = "none";
     }, 5000);
   }
 }
 
-function hideMessage(type: 'error' | 'success'): void {
-  const messageEl = elements[`${type}Message` as keyof Elements] as HTMLElement | null;
+/**
+ * Hide message notification
+ */
+function hideMessage(type: "error" | "success"): void {
+  const messageEl = elements[`${type}Message` as keyof SettingsElements] as HTMLElement | null;
   if (messageEl) {
-    messageEl.style.display = 'none';
+    messageEl.style.display = "none";
   }
 }
 
-// 연결 상태 업데이트
+/**
+ * Update connection status UI
+ */
 function updateConnectionStatus(): void {
   if (!elements.connectionStatus) return;
 
@@ -127,25 +160,31 @@ function updateConnectionStatus(): void {
         </a>
       </div>
     `;
-    if (elements.setupSection) elements.setupSection.style.display = 'none';
-    if (elements.settingsSection) elements.settingsSection.style.display = 'block';
-    if (elements.managementSection) elements.managementSection.style.display = 'block';
+    if (elements.setupSection) elements.setupSection.style.display = "none";
+    if (elements.settingsSection) elements.settingsSection.style.display = "block";
+    if (elements.ssafySection) elements.ssafySection.style.display = "block";
+    if (elements.managementSection) elements.managementSection.style.display = "block";
+    // Check SSAFY Today connection status
+    checkSsafyConnectionStatus();
   } else {
     elements.connectionStatus.innerHTML = `
       <div class="status-disconnected">
         GitHub 저장소가 연결되지 않았습니다. 아래에서 저장소를 설정해주세요.
       </div>
     `;
-    if (elements.setupSection) elements.setupSection.style.display = 'block';
-    if (elements.settingsSection) elements.settingsSection.style.display = 'none';
-    if (elements.managementSection) elements.managementSection.style.display = 'none';
+    if (elements.setupSection) elements.setupSection.style.display = "block";
+    if (elements.settingsSection) elements.settingsSection.style.display = "none";
+    if (elements.ssafySection) elements.ssafySection.style.display = "none";
+    if (elements.managementSection) elements.managementSection.style.display = "none";
   }
 }
 
-// 모드 감지 및 설정
+/**
+ * Detect and set mode from storage
+ */
 async function detectAndSetMode(): Promise<void> {
   try {
-    const data = await getObjectFromLocalStorage([
+    const data = await getObjectFromLocalStorage<Record<string, unknown>>([
       STORAGE_KEYS.MODE_TYPE,
       STORAGE_KEYS.HOOK,
       STORAGE_KEYS.TOKEN,
@@ -154,60 +193,67 @@ async function detectAndSetMode(): Promise<void> {
       STORAGE_KEYS.DIR_TEMPLATE,
     ]);
 
-    const modeType = data[STORAGE_KEYS.MODE_TYPE];
-    const hook = data[STORAGE_KEYS.HOOK];
-    const token = data[STORAGE_KEYS.TOKEN];
-    const enabled = data[STORAGE_KEYS.ENABLE];
-    const useCustomTemplate = data[STORAGE_KEYS.USE_CUSTOM_TEMPLATE];
-    const dirTemplate = data[STORAGE_KEYS.DIR_TEMPLATE];
+    const modeType = data?.[STORAGE_KEYS.MODE_TYPE] as string | undefined;
+    const hook = data?.[STORAGE_KEYS.HOOK] as string | undefined;
+    const token = data?.[STORAGE_KEYS.TOKEN] as string | undefined;
+    const enabled = data?.[STORAGE_KEYS.ENABLE] as boolean | undefined;
+    const useCustomTemplate = data?.[STORAGE_KEYS.USE_CUSTOM_TEMPLATE] as boolean | undefined;
+    const dirTemplate = data?.[STORAGE_KEYS.DIR_TEMPLATE] as string | undefined;
 
-    if (modeType === 'commit' && hook) {
+    if (modeType === "commit" && hook) {
       if (!token) {
         showAuthorizationError();
         return;
       }
 
-      // 연결된 상태
       appSettings.connected = true;
-      appSettings.repoName = hook as string;
+      appSettings.repoName = hook;
       appSettings.autoUpload = enabled !== false;
-      appSettings.useCustomTemplate = (useCustomTemplate as boolean) || false;
-      appSettings.templateString =
-        (dirTemplate as string) ||
-        '{{platform}}/{{language}}/{{removeAfterSpace(level)}}/{{problemId}}. {{safe(title)}}';
+      appSettings.useCustomTemplate = useCustomTemplate || false;
+      appSettings.templateString = dirTemplate || "{{language}}/{{level}}/{{problemId}}. {{title}}";
+
+      // ENABLE이 설정되지 않은 기존 사용자를 위해 자동으로 초기화
+      if (enabled === undefined) {
+        await saveObjectInLocalStorage({ [STORAGE_KEYS.ENABLE]: true });
+      }
 
       updateConnectionStatus();
       updateFormValues();
     } else {
-      // 연결되지 않은 상태
       appSettings.connected = false;
       updateConnectionStatus();
     }
   } catch (error) {
-    console.error('Mode detection error:', error);
+    log.error("Mode detection error:", error);
     appSettings.connected = false;
     updateConnectionStatus();
   }
 }
 
-// 토큰 유효성 확인 함수
+/**
+ * Check GitHub token validity
+ */
 async function checkGitHubToken(): Promise<string | null> {
   try {
-    const token = await getObjectFromLocalStorage(STORAGE_KEYS.TOKEN);
+    const token = await getObjectFromLocalStorage(STORAGE_KEYS.TOKEN) as string | null;
 
-    if (!token || (token as string).trim() === '') {
+    if (!token || token.trim() === "") {
       return null;
     }
 
-    return token as string;
+    return token;
   } catch (error) {
-    console.error('Token check error:', error);
+    log.error("Token check error:", error);
     return null;
   }
 }
 
-// GitHub 인증 안내 표시
+/**
+ * Show GitHub auth required notice
+ */
 function showGitHubAuthRequired(): void {
+  if (!elements.errorMessage) return;
+
   const authMessage = `
     <div class="auth-required-notice">
       <div class="notice-icon">🔐</div>
@@ -221,54 +267,60 @@ function showGitHubAuthRequired(): void {
     </div>
   `;
 
-  if (elements.errorMessage) {
-    elements.errorMessage.innerHTML = authMessage;
-    elements.errorMessage.style.display = 'block';
-  }
+  elements.errorMessage.innerHTML = authMessage;
+  elements.errorMessage.style.display = "block";
 
-  const authorizeButton = document.getElementById('authorize_button');
+  const authorizeButton = document.getElementById("authorize_button");
   if (authorizeButton) {
-    authorizeButton.addEventListener('click', () => {
-      hideMessage('error');
+    authorizeButton.addEventListener("click", () => {
+      hideMessage("error");
       beginOAuth2();
     });
   }
 }
 
-// 인증 오류 표시
+/**
+ * Show authorization error
+ */
 function showAuthorizationError(): void {
-  if (elements.errorMessage) {
-    elements.errorMessage.innerHTML =
-      'GitHub 계정 인증이 필요합니다. <button id="authorize_button" class="button button-primary">인증하기</button>';
-    elements.errorMessage.style.display = 'block';
-  }
+  if (!elements.errorMessage) return;
 
-  const authorizeButton = document.getElementById('authorize_button');
+  elements.errorMessage.innerHTML =
+    'GitHub 계정 인증이 필요합니다. <button id="authorize_button" class="button button-primary">인증하기</button>';
+  elements.errorMessage.style.display = "block";
+
+  const authorizeButton = document.getElementById("authorize_button");
   if (authorizeButton) {
-    authorizeButton.addEventListener('click', beginOAuth2);
+    authorizeButton.addEventListener("click", beginOAuth2);
   }
 }
 
-// 폼 값 업데이트
+/**
+ * Update form values from settings
+ */
 function updateFormValues(): void {
   if (elements.autoUpload) {
     elements.autoUpload.checked = appSettings.autoUpload;
   }
-  if (elements.useCustomTemplate && elements.customTemplateInput) {
+  if (elements.useCustomTemplate) {
     elements.useCustomTemplate.checked = appSettings.useCustomTemplate;
-    elements.customTemplateInput.style.display = appSettings.useCustomTemplate ? 'block' : 'none';
+    if (elements.customTemplateInput) {
+      elements.customTemplateInput.style.display = appSettings.useCustomTemplate ? "block" : "none";
+    }
   }
   if (elements.templateString) {
     elements.templateString.value = appSettings.templateString;
   }
 }
 
-// GitHub 사용자 정보 및 저장소 목록 가져오기
+/**
+ * Fetch GitHub user info and repositories
+ */
 async function fetchGitHubUserInfo(): Promise<GitHubUserInfo | null> {
   try {
-    const data = await getObjectFromLocalStorage([STORAGE_KEYS.TOKEN, STORAGE_KEYS.USERNAME]);
-    const token = data[STORAGE_KEYS.TOKEN] as string | undefined;
-    const username = data[STORAGE_KEYS.USERNAME] as string | undefined;
+    const data = await getObjectFromLocalStorage<Record<string, unknown>>([STORAGE_KEYS.TOKEN, STORAGE_KEYS.USERNAME]);
+    const token = data?.[STORAGE_KEYS.TOKEN] as string | undefined;
+    const username = data?.[STORAGE_KEYS.USERNAME] as string | undefined;
 
     if (!token || !username) {
       return null;
@@ -276,21 +328,21 @@ async function fetchGitHubUserInfo(): Promise<GitHubUserInfo | null> {
 
     githubUserInfo.username = username;
 
-    const response = await fetch('https://api.github.com/user/repos?per_page=100&sort=updated', {
+    const response = await fetch("https://api.github.com/user/repos?per_page=100&sort=updated", {
       headers: {
         Authorization: `token ${token}`,
-        Accept: 'application/vnd.github.v3+json',
+        Accept: "application/vnd.github.v3+json",
       },
     });
 
     if (response.ok) {
-      const repos = (await response.json()) as Array<{
+      const repos = await response.json();
+      githubUserInfo.repositories = repos.map((repo: {
         name: string;
         full_name: string;
         description: string | null;
         private: boolean;
-      }>;
-      githubUserInfo.repositories = repos.map((repo) => ({
+      }) => ({
         name: repo.name,
         fullName: repo.full_name,
         description: repo.description,
@@ -300,23 +352,27 @@ async function fetchGitHubUserInfo(): Promise<GitHubUserInfo | null> {
 
     return githubUserInfo;
   } catch (error) {
-    console.error('GitHub user info fetch error:', error);
+    log.error("GitHub user info fetch error:", error);
     return null;
   }
 }
 
-// 저장소 선택 드롭다운 업데이트
+/**
+ * Update repository select dropdown
+ */
 function updateRepositorySelect(): void {
   if (!elements.repoSelect) return;
 
+  // Remove existing options except first
   while (elements.repoSelect.options.length > 1) {
-    elements.repoSelect.removeChild(elements.repoSelect.lastChild as Node);
+    elements.repoSelect.removeChild(elements.repoSelect.lastChild!);
   }
 
+  // Add new options
   githubUserInfo.repositories.forEach((repo) => {
-    const option = document.createElement('option');
+    const option = document.createElement("option");
     option.value = repo.fullName;
-    option.textContent = `${repo.name} ${repo.private ? '(비공개)' : ''}`;
+    option.textContent = `${repo.name} ${repo.private ? "(비공개)" : ""}`;
     if (repo.description) {
       option.textContent += ` - ${repo.description}`;
     }
@@ -324,50 +380,56 @@ function updateRepositorySelect(): void {
   });
 }
 
-// 저장소 타입 변경 처리
+/**
+ * Handle repository type change
+ */
 async function handleRepoTypeChange(): Promise<void> {
-  if (!elements.repoType || !elements.repoName || !elements.repoSelect) return;
+  if (!elements.repoType) return;
 
   const repoType = elements.repoType.value;
 
-  if (repoType === 'new') {
-    elements.repoName.style.display = 'block';
-    elements.repoSelect.style.display = 'none';
+  if (repoType === "new") {
+    if (elements.repoName) elements.repoName.style.display = "block";
+    if (elements.repoSelect) elements.repoSelect.style.display = "none";
 
     const userInfo = await fetchGitHubUserInfo();
-    if (userInfo && userInfo.username) {
-      elements.repoName.value = `${userInfo.username}/algorithm-solutions`;
-    } else {
-      elements.repoName.value = 'username/algorithm-solutions';
+    if (elements.repoName) {
+      elements.repoName.value = userInfo?.username ? `${userInfo.username}/TIL` : "username/TIL";
     }
-  } else if (repoType === 'existing') {
+  } else if (repoType === "existing") {
     const token = await checkGitHubToken();
     if (!token) {
       showGitHubAuthRequired();
-      elements.repoType.value = '';
+      elements.repoType.value = "";
       return;
     }
 
-    elements.repoName.style.display = 'none';
-    elements.repoSelect.style.display = 'block';
+    if (elements.repoName) elements.repoName.style.display = "none";
+    if (elements.repoSelect) elements.repoSelect.style.display = "block";
 
     const userInfo = await fetchGitHubUserInfo();
     if (userInfo) {
       updateRepositorySelect();
     } else {
-      showMessage('error', 'GitHub 사용자 정보를 가져올 수 없습니다. 다시 로그인해 주세요.');
+      showMessage("error", "GitHub 사용자 정보를 가져올 수 없습니다. 다시 로그인해 주세요.");
     }
   } else {
-    elements.repoName.style.display = 'none';
-    elements.repoSelect.style.display = 'none';
-    elements.repoName.value = '';
-    elements.repoSelect.value = '';
+    if (elements.repoName) {
+      elements.repoName.style.display = "none";
+      elements.repoName.value = "";
+    }
+    if (elements.repoSelect) {
+      elements.repoSelect.style.display = "none";
+      elements.repoSelect.value = "";
+    }
   }
 
   validateForm();
 }
 
-// 저장소 선택 처리
+/**
+ * Handle repository select change
+ */
 function handleRepoSelect(): void {
   if (!elements.repoSelect || !elements.repoName) return;
 
@@ -378,138 +440,30 @@ function handleRepoSelect(): void {
   validateForm();
 }
 
-// 폼 유효성 검사
+/**
+ * Validate form inputs
+ */
 function validateForm(): boolean {
-  if (!elements.repoType || !elements.repoName || !elements.repoSelect || !elements.connectRepo) {
-    return false;
-  }
+  if (!elements.repoType || !elements.connectRepo) return false;
 
   const repoType = elements.repoType.value;
-  let repoName = '';
+  let repoName = "";
 
-  if (repoType === 'new') {
-    repoName = elements.repoName.value;
-  } else if (repoType === 'existing') {
-    repoName = elements.repoSelect.value || elements.repoName.value;
+  if (repoType === "new") {
+    repoName = elements.repoName?.value || "";
+  } else if (repoType === "existing") {
+    repoName = elements.repoSelect?.value || elements.repoName?.value || "";
   }
 
-  const isValid = !!repoType && !!repoName && repoName.includes('/');
+  const isValid = Boolean(repoType && repoName && repoName.includes("/"));
   elements.connectRepo.disabled = !isValid;
 
   return isValid;
 }
 
-// 저장소 생성
-async function createRepo(token: string, fullName: string): Promise<void> {
-  const name = fullName.split('/')[1];
-  const AUTHENTICATION_URL = 'https://api.github.com/user/repos';
-  const data = {
-    name,
-    private: true,
-    auto_init: true,
-    description: 'SSAFY TODAY로 자동 업로드되는 알고리즘 풀이 저장소입니다.',
-  };
-
-  try {
-    const response = await fetch(AUTHENTICATION_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `token ${token}`,
-        Accept: 'application/vnd.github.v3+json',
-      },
-      body: JSON.stringify(data),
-    });
-    const res = (await response.json()) as { full_name: string };
-
-    if (response.status === 201 || response.status === 200) {
-      await saveObjectInLocalStorage({
-        [STORAGE_KEYS.MODE_TYPE]: 'commit',
-        [STORAGE_KEYS.HOOK]: res.full_name,
-      });
-
-      const stats = {
-        version: chrome.runtime.getManifest().version,
-        submission: {},
-      };
-      await saveObjectInLocalStorage({ [STORAGE_KEYS.STATS]: stats });
-
-      appSettings.connected = true;
-      appSettings.repoName = res.full_name;
-      updateConnectionStatus();
-      showMessage('success', `저장소 '${res.full_name}'이(가) 생성되었습니다.`);
-    } else {
-      handleCreateRepoError(response.status, fullName);
-    }
-  } catch (error) {
-    console.error('Repository creation error:', error);
-    showMessage('error', '저장소 생성에 실패했습니다. 콘솔을 확인해주세요.');
-  }
-}
-
-// 저장소 생성 오류 처리
-function handleCreateRepoError(status: number, fullName: string): void {
-  const errorMessages: Record<number, string> = {
-    304: `'${fullName}' 저장소를 수정할 수 없습니다. 나중에 다시 시도해주세요.`,
-    400: `잘못된 요청입니다. 기존 스크립트를 덮어쓰고 있지 않은지 확인해주세요.`,
-    401: `'${fullName}'에 대한 접근 권한이 없습니다. 나중에 다시 시도해주세요.`,
-    403: `'${fullName}' 저장소에 대한 접근이 금지되었습니다.`,
-    422: `저장소가 이미 존재할 수 있습니다. '기존 저장소 연결' 옵션을 사용해보세요.`,
-  };
-
-  showMessage('error', errorMessages[status] || `저장소 생성 중 오류가 발생했습니다 (${status}).`);
-}
-
-// 기존 저장소 연결
-async function linkRepo(token: string, name: string): Promise<void> {
-  const AUTHENTICATION_URL = `https://api.github.com/repos/${name}`;
-
-  try {
-    const response = await fetch(AUTHENTICATION_URL, {
-      method: 'GET',
-      headers: {
-        Authorization: `token ${token}`,
-        Accept: 'application/vnd.github.v3+json',
-      },
-    });
-    const res = (await response.json()) as { full_name: string };
-
-    if (response.status === 200) {
-      await saveObjectInLocalStorage({
-        [STORAGE_KEYS.MODE_TYPE]: 'commit',
-        [STORAGE_KEYS.HOOK]: res.full_name,
-      });
-
-      const stats = {
-        version: chrome.runtime.getManifest().version,
-        submission: {},
-      };
-      await saveObjectInLocalStorage({ [STORAGE_KEYS.STATS]: stats });
-
-      appSettings.connected = true;
-      appSettings.repoName = res.full_name;
-      updateConnectionStatus();
-      showMessage('success', `저장소 '${res.full_name}'이(가) 연결되었습니다.`);
-    } else {
-      handleLinkRepoError(response.status, name);
-    }
-  } catch (error) {
-    console.error('Repository linking error:', error);
-    showMessage('error', '저장소 연결에 실패했습니다. 콘솔을 확인해주세요.');
-  }
-}
-
-// 저장소 연결 오류 처리
-function handleLinkRepoError(status: number, name: string): void {
-  const errorMessages: Record<number, string> = {
-    301: `'${name}' 저장소가 영구적으로 이동되었습니다. 새 저장소를 생성해주세요.`,
-    403: `'${name}' 저장소에 대한 접근 권한이 없습니다.`,
-    404: `'${name}' 저장소를 찾을 수 없습니다. 저장소 이름을 확인해주세요.`,
-  };
-
-  showMessage('error', errorMessages[status] || `저장소 연결 중 오류가 발생했습니다 (${status}).`);
-}
-
-// 저장소 연결 처리
+/**
+ * Handle repository connection
+ */
 async function handleRepoConnection(): Promise<void> {
   const token = await checkGitHubToken();
   if (!token) {
@@ -518,69 +472,105 @@ async function handleRepoConnection(): Promise<void> {
   }
 
   if (!validateForm()) {
-    showMessage('error', '모든 필드를 올바르게 입력해주세요.');
+    showMessage("error", "모든 필드를 올바르게 입력해주세요.");
     return;
   }
 
-  if (!elements.repoType || !elements.repoName || !elements.repoSelect || !elements.connectRepo) {
-    return;
-  }
+  if (!elements.repoType || !elements.connectRepo) return;
 
   const repoType = elements.repoType.value;
-  let repoName = '';
+  let repoName = "";
 
-  if (repoType === 'new') {
-    repoName = elements.repoName.value;
-  } else if (repoType === 'existing') {
-    repoName = elements.repoSelect.value || elements.repoName.value;
+  if (repoType === "new") {
+    repoName = elements.repoName?.value || "";
+  } else if (repoType === "existing") {
+    repoName = elements.repoSelect?.value || elements.repoName?.value || "";
   }
 
   try {
-    hideMessage('error');
+    hideMessage("error");
     elements.connectRepo.disabled = true;
-    elements.connectRepo.innerHTML = '<span>⏳</span> 연결 중...';
+    elements.connectRepo.textContent = "연결 중...";
 
-    if (repoType === 'new') {
-      await createRepo(token, repoName);
-    } else {
-      await linkRepo(token, repoName);
-    }
+    await saveObjectInLocalStorage({
+      [STORAGE_KEYS.MODE_TYPE]: "commit",
+      [STORAGE_KEYS.HOOK]: repoName,
+      [STORAGE_KEYS.ENABLE]: true,
+    });
+
+    await beginOAuth2();
   } catch (error) {
-    console.error('Repository connection error:', error);
-    showMessage('error', '저장소 연결에 실패했습니다. 다시 시도해주세요.');
-  } finally {
+    log.error("Repository connection error:", error);
+    showMessage("error", "저장소 연결에 실패했습니다. 다시 시도해주세요.");
     elements.connectRepo.disabled = false;
-    elements.connectRepo.innerHTML = '<span>🔗</span> 연결하기';
+    elements.connectRepo.textContent = "연결하기";
   }
 }
 
-// 저장소 연결 해제
+/**
+ * Handle repository disconnection
+ */
 async function handleRepoDisconnection(): Promise<void> {
-  if (!confirm('정말로 저장소 연결을 해제하시겠습니까?')) {
+  if (!confirm("정말로 저장소 연결을 해제하시겠습니까?")) {
     return;
   }
 
   try {
     await saveObjectInLocalStorage({
-      [STORAGE_KEYS.MODE_TYPE]: '',
-      [STORAGE_KEYS.HOOK]: '',
-      [STORAGE_KEYS.TOKEN]: '',
-      [STORAGE_KEYS.USERNAME]: '',
-      [STORAGE_KEYS.ORG_OPTION]: undefined,
+      [STORAGE_KEYS.MODE_TYPE]: "",
+      [STORAGE_KEYS.HOOK]: "",
+      [STORAGE_KEYS.TOKEN]: "",
+      [STORAGE_KEYS.USERNAME]: "",
+      [STORAGE_KEYS.ORG_OPTION]: "",
     });
 
     appSettings.connected = false;
-    appSettings.repoName = '';
+    appSettings.repoName = "";
 
     updateConnectionStatus();
-    showMessage('success', '저장소 연결이 해제되었습니다.');
+    showMessage("success", "저장소 연결이 해제되었습니다.");
   } catch (error) {
-    console.error('Disconnection error:', error);
-    showMessage('error', '연결 해제에 실패했습니다.');
+    log.error("Disconnection error:", error);
+    showMessage("error", "연결 해제에 실패했습니다.");
   }
 }
 
-// 설정 저장
+/**
+ * Update SSAFY Today status badge
+ */
+function updateSsafyStatusBadge(connected: boolean): void {
+  if (!elements.ssafyStatusBadge) return;
+
+  if (connected) {
+    elements.ssafyStatusBadge.textContent = "연결됨";
+    elements.ssafyStatusBadge.style.background = "#c6f6d5";
+    elements.ssafyStatusBadge.style.color = "#276749";
+  } else {
+    elements.ssafyStatusBadge.textContent = "연결 안됨";
+    elements.ssafyStatusBadge.style.background = "#fed7d7";
+    elements.ssafyStatusBadge.style.color = "#c53030";
+  }
+}
+
+/**
+ * Check SSAFY Today connection status on load
+ */
+async function checkSsafyConnectionStatus(): Promise<void> {
+  try {
+    const response = await fetch("https://ssafy.today/api/submissions/health/", {
+      method: "GET",
+      mode: "cors",
+    });
+    updateSsafyStatusBadge(response.ok);
+  } catch (error) {
+    log.warn("SSAFY Today connection check failed:", error);
+    updateSsafyStatusBadge(false);
+  }
+}
+
+/**
+ * Save settings to storage
+ */
 async function saveSettings(): Promise<void> {
   try {
     await saveObjectInLocalStorage({
@@ -589,275 +579,251 @@ async function saveSettings(): Promise<void> {
       [STORAGE_KEYS.DIR_TEMPLATE]: appSettings.templateString,
     });
   } catch (error) {
-    console.error('Settings save error:', error);
+    log.error("Settings save error:", error);
   }
 }
 
-// SSAFY API 상태 확인
-async function checkSsafyApiStatus(): Promise<void> {
-  updateApiStatusUI('checking');
-
-  try {
-    const response = await fetch('https://ssafy.today/api/submissions/health/', {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-
-    if (response.ok) {
-      updateApiStatusUI('connected');
-    } else {
-      updateApiStatusUI('disconnected');
-    }
-  } catch (error) {
-    console.error('SSAFY API check error:', error);
-    updateApiStatusUI('disconnected');
-  }
-}
-
-// API 상태 UI 업데이트
-type ApiStatus = 'checking' | 'connected' | 'disconnected';
-
-interface StatusConfig {
-  icon: string;
-  badge: string;
-  badgeClass: string;
-}
-
-function updateApiStatusUI(status: ApiStatus): void {
-  const statusConfig: Record<ApiStatus, StatusConfig> = {
-    checking: {
-      icon: '🔄',
-      badge: '연결 확인 중...',
-      badgeClass: 'checking',
-    },
-    connected: {
-      icon: '✅',
-      badge: '연결됨',
-      badgeClass: 'connected',
-    },
-    disconnected: {
-      icon: '❌',
-      badge: '연결 안됨',
-      badgeClass: 'disconnected',
-    },
-  };
-
-  const config = statusConfig[status];
-  if (elements.apiStatusIcon) {
-    elements.apiStatusIcon.textContent = config.icon;
-  }
-  if (elements.apiStatusBadge) {
-    elements.apiStatusBadge.textContent = config.badge;
-    elements.apiStatusBadge.className = `api-status-badge ${config.badgeClass}`;
-  }
-}
-
-// 이벤트 리스너 등록
+/**
+ * Setup event listeners
+ */
 function setupEventListeners(): void {
-  // 저장소 타입 변경
+  // Repository type change
   if (elements.repoType) {
-    elements.repoType.addEventListener('change', handleRepoTypeChange);
+    elements.repoType.addEventListener("change", handleRepoTypeChange);
   }
 
-  // 저장소 선택
+  // Repository select change
   if (elements.repoSelect) {
-    elements.repoSelect.addEventListener('change', handleRepoSelect);
+    elements.repoSelect.addEventListener("change", handleRepoSelect);
   }
 
-  // 폼 유효성 검사
+  // Form validation
   if (elements.repoName) {
-    elements.repoName.addEventListener('input', validateForm);
+    elements.repoName.addEventListener("input", validateForm);
   }
 
-  // 저장소 연결/해제
+  // Repository connect/disconnect
   if (elements.connectRepo) {
-    elements.connectRepo.addEventListener('click', handleRepoConnection);
+    elements.connectRepo.addEventListener("click", handleRepoConnection);
   }
   if (elements.unlinkRepo) {
-    elements.unlinkRepo.addEventListener('click', handleRepoDisconnection);
+    elements.unlinkRepo.addEventListener("click", handleRepoDisconnection);
   }
 
-  // 설정 변경
+  // Settings changes
   if (elements.autoUpload) {
-    elements.autoUpload.addEventListener('change', async (e) => {
+    elements.autoUpload.addEventListener("change", async (e) => {
       appSettings.autoUpload = (e.target as HTMLInputElement).checked;
       await saveSettings();
     });
   }
 
-  if (elements.useCustomTemplate && elements.customTemplateInput) {
-    elements.useCustomTemplate.addEventListener('change', async (e) => {
+  if (elements.useCustomTemplate) {
+    elements.useCustomTemplate.addEventListener("change", async (e) => {
       appSettings.useCustomTemplate = (e.target as HTMLInputElement).checked;
-      elements.customTemplateInput!.style.display = (e.target as HTMLInputElement).checked
-        ? 'block'
-        : 'none';
+      if (elements.customTemplateInput) {
+        elements.customTemplateInput.style.display = appSettings.useCustomTemplate ? "block" : "none";
+      }
       await saveSettings();
     });
   }
 
   if (elements.templateString) {
-    elements.templateString.addEventListener('input', async (e) => {
+    elements.templateString.addEventListener("input", (e) => {
       appSettings.templateString = (e.target as HTMLInputElement).value;
     });
   }
 
-  // SSAFY API 연결 테스트
-  if (elements.testApiConnection) {
-    elements.testApiConnection.addEventListener('click', checkSsafyApiStatus);
+  // SSAFY Today connection test
+  if (elements.testSsafyConnection) {
+    elements.testSsafyConnection.addEventListener("click", async () => {
+      elements.testSsafyConnection!.disabled = true;
+      elements.testSsafyConnection!.textContent = "테스트 중...";
+
+      try {
+        const response = await fetch("https://ssafy.today/api/submissions/health/");
+        if (response.ok) {
+          showMessage("success", "SSAFY Today 서버 연결 성공!");
+          updateSsafyStatusBadge(true);
+        } else {
+          showMessage("error", `연결 실패: HTTP ${response.status}`);
+          updateSsafyStatusBadge(false);
+        }
+      } catch (error) {
+        showMessage("error", `연결 실패: ${error}`);
+        updateSsafyStatusBadge(false);
+      }
+
+      elements.testSsafyConnection!.disabled = false;
+      elements.testSsafyConnection!.textContent = "🔍 연결 테스트";
+    });
   }
 }
 
-// 툴팁 관리 클래스
+/**
+ * Tooltip manager class for managing tooltips
+ */
 class TooltipManager {
-  private tooltip: HTMLDivElement | null = null;
+  private tooltip: HTMLDivElement;
 
   constructor() {
+    this.tooltip = document.createElement("div");
     this.init();
   }
 
-  init(): void {
-    this.tooltip = document.createElement('div');
-    this.tooltip.className = 'tooltip';
+  private init(): void {
+    this.tooltip.className = "tooltip";
     document.body.appendChild(this.tooltip);
     this.attachEventListeners();
   }
 
-  attachEventListeners(): void {
-    const elementsWithTooltip = document.querySelectorAll('[data-tooltip]');
+  private attachEventListeners(): void {
+    const elementsWithTooltip = document.querySelectorAll<HTMLElement>("[data-tooltip]");
 
     elementsWithTooltip.forEach((element) => {
-      element.addEventListener('mouseenter', (e) => {
+      element.addEventListener("mouseenter", (e) => {
         this.showTooltip(e.target as HTMLElement);
       });
 
-      element.addEventListener('mouseleave', () => {
+      element.addEventListener("mouseleave", () => {
         this.hideTooltip();
       });
 
-      element.addEventListener('mousemove', (e) => {
+      element.addEventListener("mousemove", (e) => {
         this.updateTooltipPosition(e as MouseEvent);
       });
     });
   }
 
-  showTooltip(element: HTMLElement): void {
-    if (!this.tooltip) return;
-
-    const tooltipText = element.getAttribute('data-tooltip');
+  private showTooltip(element: HTMLElement): void {
+    const tooltipText = element.getAttribute("data-tooltip");
     if (!tooltipText) return;
 
     this.tooltip.textContent = tooltipText;
-    this.tooltip.classList.add('show');
+    this.tooltip.classList.add("show");
   }
 
-  hideTooltip(): void {
-    if (!this.tooltip) return;
-    this.tooltip.classList.remove('show');
+  private hideTooltip(): void {
+    this.tooltip.classList.remove("show");
   }
 
-  updateTooltipPosition(event: MouseEvent): void {
-    if (!this.tooltip) return;
-
+  private updateTooltipPosition(event: MouseEvent): void {
     const tooltipRect = this.tooltip.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
 
     let left = event.pageX - tooltipRect.width / 2;
     let top = event.pageY - tooltipRect.height - 10;
 
+    // Left boundary
     if (left < 0) {
       left = 5;
     }
+    // Right boundary
     if (left + tooltipRect.width > viewportWidth) {
       left = viewportWidth - tooltipRect.width - 5;
     }
+    // Top boundary (show below)
     if (top < 0) {
       top = event.pageY + 10;
     }
 
-    this.tooltip.style.left = left + 'px';
-    this.tooltip.style.top = top + 'px';
+    this.tooltip.style.left = `${left}px`;
+    this.tooltip.style.top = `${top}px`;
   }
 
-  refresh(): void {
+  /**
+   * Refresh event listeners for dynamically added elements
+   */
+  public refresh(): void {
     this.attachEventListeners();
   }
 }
 
-// 템플릿 빌더 클래스
+/**
+ * Template builder class for managing template customization
+ */
 class TemplateBuilder {
   private templateInput: HTMLInputElement | null;
   private templatePreview: HTMLElement | null;
-  private presetCards: NodeListOf<Element>;
-  private variableBtns: NodeListOf<Element>;
-  private filterBtns: NodeListOf<Element>;
-  private saveBtn: HTMLButtonElement | null;
-  private resetBtn: HTMLButtonElement | null;
+  private presetCards: NodeListOf<HTMLElement>;
+  private variableBtns: NodeListOf<HTMLElement>;
+  private filterBtns: NodeListOf<HTMLElement>;
+  private saveBtn: HTMLElement | null;
+  private resetBtn: HTMLElement | null;
 
   constructor() {
-    this.templateInput = document.getElementById('templateString') as HTMLInputElement | null;
-    this.templatePreview = document.getElementById('templatePreview');
-    this.presetCards = document.querySelectorAll('.preset-card');
-    this.variableBtns = document.querySelectorAll('.variable-btn');
-    this.filterBtns = document.querySelectorAll('.filter-btn');
-    this.saveBtn = document.getElementById('saveTemplate') as HTMLButtonElement | null;
-    this.resetBtn = document.getElementById('resetTemplate') as HTMLButtonElement | null;
+    this.templateInput = document.getElementById("templateString") as HTMLInputElement | null;
+    this.templatePreview = document.getElementById("templatePreview");
+    this.presetCards = document.querySelectorAll<HTMLElement>(".preset-card");
+    this.variableBtns = document.querySelectorAll<HTMLElement>(".variable-btn");
+    this.filterBtns = document.querySelectorAll<HTMLElement>(".filter-btn");
+    this.saveBtn = document.getElementById("saveTemplate");
+    this.resetBtn = document.getElementById("resetTemplate");
 
     this.init();
   }
 
-  init(): void {
-    // 프리셋 카드 클릭 이벤트
+  private init(): void {
+    // Preset card click events
     this.presetCards.forEach((card) => {
-      card.addEventListener('click', () => {
-        this.selectPreset(card as HTMLElement);
+      card.addEventListener("click", () => {
+        this.selectPreset(card);
       });
     });
 
-    // 변수 버튼 클릭 이벤트
+    // Variable button click events
     this.variableBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.insertVariable((btn as HTMLElement).dataset.variable || '');
+      btn.addEventListener("click", () => {
+        const variable = btn.dataset.variable;
+        if (variable) {
+          this.insertVariable(variable);
+        }
       });
     });
 
-    // 필터 버튼 클릭 이벤트
+    // Filter button click events
     this.filterBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.insertFunction((btn as HTMLElement).dataset.function || '');
+      btn.addEventListener("click", () => {
+        const functionName = btn.dataset.function;
+        if (functionName) {
+          this.insertFunction(functionName);
+        }
       });
     });
 
-    // 템플릿 입력 실시간 업데이트
+    // Template input real-time update
     if (this.templateInput) {
-      this.templateInput.addEventListener('input', () => {
+      this.templateInput.addEventListener("input", () => {
         this.updatePreview();
       });
     }
 
-    // 저장 버튼 이벤트
+    // Save button event
     if (this.saveBtn) {
-      this.saveBtn.addEventListener('click', () => {
+      this.saveBtn.addEventListener("click", () => {
         this.saveTemplate();
       });
     }
 
-    // 초기화 버튼 이벤트
+    // Reset button event
     if (this.resetBtn) {
-      this.resetBtn.addEventListener('click', () => {
+      this.resetBtn.addEventListener("click", () => {
         this.resetTemplate();
       });
     }
 
-    // 초기 미리보기 업데이트
+    // Initial preview update
     this.updatePreview();
   }
 
-  selectPreset(selectedCard: HTMLElement): void {
-    this.presetCards.forEach((card) => card.classList.remove('selected'));
-    selectedCard.classList.add('selected');
+  private selectPreset(selectedCard: HTMLElement): void {
+    // Deselect all
+    this.presetCards.forEach((card) => card.classList.remove("selected"));
 
+    // Select new
+    selectedCard.classList.add("selected");
+
+    // Apply template
     const template = selectedCard.dataset.template;
     if (this.templateInput && template) {
       this.templateInput.value = template;
@@ -865,7 +831,7 @@ class TemplateBuilder {
     }
   }
 
-  insertVariable(variable: string): void {
+  private insertVariable(variable: string): void {
     if (!this.templateInput) return;
 
     const cursorPos = this.templateInput.selectionStart || 0;
@@ -874,6 +840,7 @@ class TemplateBuilder {
 
     this.templateInput.value = newValue;
 
+    // Adjust cursor position
     const newCursorPos = cursorPos + variable.length;
     this.templateInput.setSelectionRange(newCursorPos, newCursorPos);
     this.templateInput.focus();
@@ -881,16 +848,16 @@ class TemplateBuilder {
     this.updatePreview();
   }
 
-  insertFunction(functionName: string): void {
+  private insertFunction(functionName: string): void {
     if (!this.templateInput) return;
 
     const cursorPos = this.templateInput.selectionStart || 0;
     const currentValue = this.templateInput.value;
-    const newValue =
-      currentValue.slice(0, cursorPos) + functionName + '()' + currentValue.slice(cursorPos);
+    const newValue = currentValue.slice(0, cursorPos) + functionName + "()" + currentValue.slice(cursorPos);
 
     this.templateInput.value = newValue;
 
+    // Move cursor inside parentheses
     const newCursorPos = cursorPos + functionName.length + 1;
     this.templateInput.setSelectionRange(newCursorPos, newCursorPos);
     this.templateInput.focus();
@@ -898,39 +865,41 @@ class TemplateBuilder {
     this.updatePreview();
   }
 
-  updatePreview(): void {
+  private updatePreview(): void {
     if (!this.templateInput || !this.templatePreview) return;
 
     const template =
-      this.templateInput.value ||
-      '{{platform}}/{{language}}/{{removeAfterSpace(level)}}/{{problemId}}. {{safe(title)}}';
+      this.templateInput.value || "{{language}}/{{removeAfterSpace(level)}}/{{problemId}}. {{safe(title)}}";
 
     try {
-      // 예시 데이터 (다양한 플랫폼 지원)
+      // Sample data
       const sampleData = {
-        platform: '백준',
-        problemId: '1000',
-        title: 'A+B',
-        level: 'Silver V',
-        language: 'Python',
+        platform: "백준",
+        problemId: "1000",
+        title: "A+B",
+        level: "Silver V",
+        language: "Python",
       };
 
-      const result = parseTemplateString(template, sampleData, getTextTransforms());
-      const finalResult = result.includes('.') ? result : result + '.py';
+      // Parse with safe-template-parser
+      const result = parseTemplateString(template, sampleData, getTextTransforms() as unknown as SafeTextTransforms);
+
+      // Add file extension if missing
+      const finalResult = result.includes(".") ? result : result + ".py";
 
       this.templatePreview.textContent = finalResult;
-      this.templatePreview.style.color = '#fbb6ce';
+      this.templatePreview.style.color = "#fbb6ce";
     } catch (error) {
-      console.error('Template parsing error:', error);
-      this.templatePreview.textContent = '템플릿 구문 오류: ' + (error as Error).message;
-      this.templatePreview.style.color = '#f56565';
+      log.error("Template parsing error:", error);
+      this.templatePreview.textContent = `템플릿 구문 오류: ${(error as Error).message}`;
+      this.templatePreview.style.color = "#f56565";
     }
   }
 
-  async saveTemplate(): Promise<void> {
-    if (!this.templateInput) return;
-
+  private async saveTemplate(): Promise<void> {
     try {
+      if (!this.templateInput) return;
+
       const templateString = this.templateInput.value;
       appSettings.templateString = templateString;
 
@@ -938,52 +907,53 @@ class TemplateBuilder {
         [STORAGE_KEYS.DIR_TEMPLATE]: templateString,
       });
 
-      showMessage('success', '템플릿이 저장되었습니다.');
+      showMessage("success", "템플릿이 저장되었습니다.");
     } catch (error) {
-      console.error('Template save error:', error);
-      showMessage('error', '템플릿 저장에 실패했습니다.');
+      log.error("Template save error:", error);
+      showMessage("error", "템플릿 저장에 실패했습니다.");
     }
   }
 
-  resetTemplate(): void {
-    const defaultTemplate =
-      '{{platform}}/{{language}}/{{removeAfterSpace(level)}}/{{problemId}}. {{safe(title)}}';
+  private resetTemplate(): void {
+    const defaultTemplate = "{{language}}/{{removeAfterSpace(level)}}/{{problemId}}. {{safe(title)}}";
 
     if (this.templateInput) {
       this.templateInput.value = defaultTemplate;
       this.updatePreview();
     }
 
-    this.presetCards.forEach((card) => card.classList.remove('selected'));
-    showMessage('success', '템플릿이 초기화되었습니다.');
+    // Deselect presets
+    this.presetCards.forEach((card) => card.classList.remove("selected"));
+
+    showMessage("success", "템플릿이 초기화되었습니다.");
   }
 }
 
-// 앱 초기화
+/**
+ * Initialize settings app
+ */
 async function init(): Promise<void> {
-  console.log('SSAFY TODAY Settings initialized');
+  log.info("SsafyToday Settings initialized");
 
   try {
+    initElements();
     await detectAndSetMode();
     setupEventListeners();
     validateForm();
 
-    // 툴팁 매니저 초기화
+    // Initialize tooltip manager
     new TooltipManager();
 
-    // 템플릿 빌더 초기화
+    // Initialize template builder
     new TemplateBuilder();
-
-    // SSAFY API 상태 확인
-    checkSsafyApiStatus();
   } catch (error) {
-    console.error('Initialization error:', error);
+    log.error("Initialization error:", error);
   }
 }
 
-// DOM이 로드되면 초기화
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+// DOM load handler
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
 } else {
   init();
 }

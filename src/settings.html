@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SSAFY TODAY 설정</title>
+    <title>SsafyToday 설정</title>
     <link rel="stylesheet" href="css/settings.css" />
   </head>
   <body>
     <div class="container">
       <div class="header">
-        <h1 class="title">SSAFY <span class="brand-highlight">TODAY</span></h1>
+        <h1 class="title">🚀 SsafyToday</h1>
         <p class="subtitle">GitHub 연동 설정</p>
       </div>
 
@@ -27,7 +27,7 @@
 
           <div class="tutorial-tip">
             <span class="tip-icon">💡</span>
-            <strong>시작하기:</strong> GitHub 저장소를 연결하여 문제 해결 기록을 자동으로 관리해보세요!
+            <strong>시작하기:</strong> GitHub 저장소를 연결하여 백준 문제 해결 기록을 자동으로 관리해보세요!
           </div>
 
           <div class="card">
@@ -47,7 +47,7 @@
               <select id="repoSelect" class="form-control" style="display: none;">
                 <option value="">저장소를 선택하세요</option>
               </select>
-              <div class="help-text">형식: GitHub사용자명/저장소명 (예: john/algorithm-solutions)</div>
+              <div class="help-text">형식: GitHub사용자명/저장소명 (예: john/baekjoon-solutions)</div>
             </div>
 
             <div class="button-group">
@@ -101,8 +101,8 @@
                 <label class="form-label">자주 사용하는 템플릿</label>
                 <div class="template-presets">
                   <div class="preset-card" data-template="{{platform}}/{{language}}/{{removeAfterSpace(level)}}/{{problemId}}. {{safe(title)}}">
-                    <div class="preset-title">기본형 (플랫폼별)</div>
-                    <div class="preset-example">백준/Python/Silver/1000. A+B</div>
+                    <div class="preset-title">기본형 (복합)</div>
+                    <div class="preset-example">백준/Python/Silver/1000. A＋B</div>
                   </div>
                   <div class="preset-card" data-template="{{removeAfterSpace(level)}}/{{language}}/{{problemId}}-{{safe(title)}}">
                     <div class="preset-title">난이도별 + 언어별</div>
@@ -110,11 +110,11 @@
                   </div>
                   <div class="preset-card" data-template="{{platform}}/{{problemId}}/{{safe(title)}}">
                     <div class="preset-title">플랫폼별 + 문제별</div>
-                    <div class="preset-example">프로그래머스/12345/문제이름</div>
+                    <div class="preset-example">백준/1000/A+B</div>
                   </div>
-                  <div class="preset-card" data-template="{{language}}/{{platform}}/{{problemId}}-{{safe(title)}}">
-                    <div class="preset-title">언어별 + 플랫폼별</div>
-                    <div class="preset-example">Python/SWEA/1000-A+B</div>
+                  <div class="preset-card" data-template="{{language}}/{{problemId}}-{{safe(title)}}">
+                    <div class="preset-title">언어별 단순 구조</div>
+                    <div class="preset-example">Python/1000-A+B</div>
                   </div>
                 </div>
               </div>
@@ -123,7 +123,7 @@
               <div class="form-group">
                 <label class="form-label">사용 가능한 변수</label>
                 <div class="template-variables">
-                  <button type="button" class="variable-btn" data-variable="{{platform}}" data-tooltip="문제를 푼 플랫폼 (백준, 프로그래머스, SWEA, goormlevel)">platform</button>
+                  <button type="button" class="variable-btn" data-variable="{{platform}}" data-tooltip="문제를 푼 플랫폼 이름 (예: 백준, 프로그래머스)">platform</button>
                   <button type="button" class="variable-btn" data-variable="{{problemId}}" data-tooltip="문제 번호 또는 ID (예: 1000, 42586)">problemId</button>
                   <button type="button" class="variable-btn" data-variable="{{title}}" data-tooltip="문제 제목 (예: A+B, 괄호 변환)">title</button>
                   <button type="button" class="variable-btn" data-variable="{{level}}" data-tooltip="문제 난이도 (예: Bronze V, Silver III)">level</button>
@@ -142,9 +142,17 @@
                   <button type="button" class="filter-btn" data-function="trim" data-tooltip="앞뒤 공백 제거">trim()</button>
                   <button type="button" class="filter-btn" data-function="extractNumbers" data-tooltip="숫자만 추출 (abc123def → 123)">extractNumbers()</button>
                   <button type="button" class="filter-btn" data-function="extractLetters" data-tooltip="영문자만 추출 (abc123def → abcdef)">extractLetters()</button>
+                  <!-- <button type="button" class="filter-btn" data-function="toKebabCase" data-tooltip="kebab-case로 변환 (Hello World → hello-world)">toKebabCase()</button> -->
+                  <!-- <button type="button" class="filter-btn" data-function="toSnakeCase" data-tooltip="snake_case로 변환 (Hello World → hello_world)">toSnakeCase()</button> -->
+                  <!-- <button type="button" class="filter-btn" data-function="toCamelCase" data-tooltip="camelCase로 변환 (hello world → helloWorld)">toCamelCase()</button> -->
+                  <!-- <button type="button" class="filter-btn" data-function="toPascalCase" data-tooltip="PascalCase로 변환 (hello world → HelloWorld)">toPascalCase()</button> -->
                   <button type="button" class="filter-btn" data-function="truncate" data-tooltip="문자열 길이 제한 (기본 50자)">truncate()</button>
                   <button type="button" class="filter-btn" data-function="htmlEscape" data-tooltip='HTML 특수문자 이스케이프 (&lt;&gt;&amp;")'>htmlEscape()</button>
+                  <!-- <button type="button" class="filter-btn" data-function="htmlUnescape" data-tooltip="HTML 특수문자 디코딩 (&lt;&gt; → <>)">htmlUnescape()</button> -->
                   <button type="button" class="filter-btn" data-function="base64Encode" data-tooltip="Base64로 인코딩">base64Encode()</button>
+                  <!-- <button type="button" class="filter-btn" data-function="base64Decode" data-tooltip="Base64에서 디코딩">base64Decode()</button> -->
+                  <!-- <button type="button" class="filter-btn" data-function="formatKoreanDate" data-tooltip="한국어 날짜 형식으로 변환">formatKoreanDate()</button> -->
+                  <!-- <button type="button" class="filter-btn" data-function="arrayJoin" data-tooltip="배열을 지정된 구분자로 연결 (기본: -)">arrayJoin()</button> -->
                 </div>
                 <div class="help-text">
                   함수를 클릭하면 커서 위치에 함수가 추가됩니다. 변수를 함수로 감쌀 수 있습니다.
@@ -177,31 +185,22 @@
           </div>
         </div>
 
-        <!-- SSAFY Today API 상태 -->
-        <div id="ssafyApiSection" class="section">
-          <h2 class="section-title">SSAFY Today API</h2>
+        <!-- SSAFY Today 연동 -->
+        <div id="ssafySection" class="section" style="display: none">
+          <h2 class="section-title">🌐 SSAFY Today 연동</h2>
 
           <div class="card">
-            <div class="api-status-card">
-              <div class="api-status-header">
-                <div class="api-status-icon" id="apiStatusIcon">🔄</div>
-                <div class="api-status-info">
-                  <div class="api-status-title">SSAFY Today 서버</div>
-                  <div class="api-status-url">https://ssafy.today</div>
-                </div>
-                <div id="apiStatusBadge" class="api-status-badge checking">연결 확인 중...</div>
+            <div class="toggle-section">
+              <div>
+                <div class="toggle-label">서버 연결 상태</div>
+                <div class="help-text">제출 데이터가 자동으로 SSAFY Today 서버로 전송됩니다.</div>
               </div>
-
-              <div class="api-status-description">
-                <p>제출 데이터가 자동으로 SSAFY Today 서버로 전송됩니다.</p>
-                <p class="api-note">지원 플랫폼: 백준, 프로그래머스, SWEA, goormlevel</p>
+              <div id="ssafyStatusBadge" style="padding: 6px 12px; border-radius: 4px; font-size: 12px; background: #e2e8f0; color: #4a5568;">
+                확인 중...
               </div>
-
-              <div class="button-group">
-                <button id="testApiConnection" class="button button-secondary">
-                  <span>🔍</span> 연결 테스트
-                </button>
-              </div>
+            </div>
+            <div class="button-group" style="margin-top: 16px">
+              <button id="testSsafyConnection" class="button button-secondary"><span>🔍</span> 연결 테스트</button>
             </div>
           </div>
         </div>
@@ -223,12 +222,10 @@
       </div>
 
       <div class="footer">
-        <a href="https://github.com/ssafytoday/SsafyToday" target="_blank">
-          ⭐ GitHub에서 <span>SSAFY</span> <span class="brand-highlight">TODAY</span> 보기
-        </a>
+        <a href="https://ssafy.today" target="_blank"> 🌐 SSAFY Today 바로가기 </a>
       </div>
     </div>
 
-    <script src="settings.js"></script>
+    <script src="settings.ts" type="module"></script>
   </body>
 </html>

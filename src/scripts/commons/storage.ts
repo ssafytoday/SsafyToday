@@ -1,395 +1,400 @@
-import { log, isNull } from './util';
-import { STORAGE_KEYS } from '@/constants/registry';
-import { GitHub } from './github';
-import EnhancedTemplateService from './enhancedtemplate';
-import type {
-  StorageData,
-  StorageKey,
-  StorageStats,
-  GitHubTreeItem,
-  PlatformType,
-} from '@types';
+/**
+ * Chrome Storage API wrapper for SsafyToday
+ * Provides typed access to chrome.storage.local and chrome.storage.sync
+ *
+ * Refactored to use ChromeStorageAdapter for better separation of concerns
+ */
+
+import { isNull } from "./util";
+import { STORAGE_KEYS } from "@/constants/registry";
+import { GitHub } from "./github";
+import EnhancedTemplateService from "./enhanced-template";
+import log from "@/commons/logger";
+import { chromeStorageAdapter } from "./storage-adapter";
+import type { Stats, StorageData } from "@/types/storage";
+import type { PlatformName } from "@/types/platform";
 
 /**
- * 현재 익스텐션의 버전정보를 반환합니다.
- * @returns 현재 익스텐션의 버전정보
+ * Get current extension version
+ * @returns The current extension version
  */
 export function getVersion(): string {
   return chrome.runtime.getManifest().version;
 }
 
 /**
- * Chrome의 Local StorageArea에서 개체 가져오기
+ * Get object from Chrome Local Storage
+ * @param key - Storage key or array of keys
+ * @returns Promise resolving to stored value
+ */
+export async function getObjectFromLocalStorage<T = unknown>(key: string | string[]): Promise<T | undefined> {
+  log.info("storage.ts: getObjectFromLocalStorage called with key:", key);
+  return chromeStorageAdapter.get<T>(key, "local");
+}
+
+/**
+ * Save object to Chrome Local Storage
+ * @param obj - Object to save
+ */
+export async function saveObjectInLocalStorage(obj: Record<string, unknown>): Promise<void> {
+  log.info("storage.ts: saveObjectInLocalStorage called with obj:", obj);
+  return chromeStorageAdapter.set(obj, "local");
+}
+
+/**
+ * Remove object from Chrome Local Storage
+ * @param keys - Key or array of keys to remove
+ */
+export async function removeObjectFromLocalStorage(keys: string | string[]): Promise<void> {
+  log.info("storage.ts: removeObjectFromLocalStorage called with keys:", keys);
+  return chromeStorageAdapter.remove(keys, "local");
+}
+
+/**
+ * Get object from Chrome Sync Storage
  * @param key - Storage key
+ * @returns Promise resolving to stored value
  */
-export async function getObjectFromLocalStorage<K extends StorageKey>(
-  key: K
-): Promise<StorageData[K] | undefined>;
-export async function getObjectFromLocalStorage<K extends StorageKey>(
-  key: K[]
-): Promise<Partial<Pick<StorageData, K>>>;
-export async function getObjectFromLocalStorage<K extends StorageKey>(
-  key: K | K[]
-): Promise<StorageData[K] | Partial<Pick<StorageData, K>> | undefined> {
-  return new Promise((resolve) => {
-    try {
-      chrome.storage.local.get(key as string | string[], (value) => {
-        if (Array.isArray(key)) {
-          resolve(value as Partial<Pick<StorageData, K>>);
-        } else {
-          resolve(value[key as string] as StorageData[K] | undefined);
-        }
-      });
-    } catch (ex) {
-      console.error(ex);
-      resolve(undefined);
-    }
-  });
+export async function getObjectFromSyncStorage<T = unknown>(key: string): Promise<T | undefined> {
+  log.info("storage.ts: getObjectFromSyncStorage called with key:", key);
+  return chromeStorageAdapter.get<T>(key, "sync");
 }
 
 /**
- * Chrome의 Local StorageArea에 개체 저장
- * @param obj - 저장할 객체
+ * Save object to Chrome Sync Storage
+ * @param obj - Object to save
  */
-export async function saveObjectInLocalStorage(
-  obj: Partial<StorageData>
-): Promise<void> {
-  return new Promise((resolve) => {
-    try {
-      chrome.storage.local.set(obj, () => {
-        resolve();
-      });
-    } catch (ex) {
-      console.error(ex);
-      resolve();
-    }
-  });
+export async function saveObjectInSyncStorage(obj: Record<string, unknown>): Promise<void> {
+  log.info("storage.ts: saveObjectInSyncStorage called with obj:", obj);
+  return chromeStorageAdapter.set(obj, "sync");
 }
 
 /**
- * Chrome Local StorageArea에서 개체 제거
- * @param keys - 제거할 키 또는 키 배열
+ * Remove object from Chrome Sync Storage
+ * @param keys - Key or array of keys to remove
  */
-export async function removeObjectFromLocalStorage(
-  keys: string | string[]
-): Promise<void> {
-  return new Promise((resolve) => {
-    try {
-      chrome.storage.local.remove(keys, () => {
-        resolve();
-      });
-    } catch (ex) {
-      console.error(ex);
-      resolve();
-    }
-  });
+export async function removeObjectFromSyncStorage(keys: string | string[]): Promise<void> {
+  log.info("storage.ts: removeObjectFromSyncStorage called with keys:", keys);
+  return chromeStorageAdapter.remove(keys, "sync");
 }
 
-/**
- * Chrome의 Sync StorageArea에서 개체 가져오기
- * @param key - Storage key
- */
-export async function getObjectFromSyncStorage<K extends StorageKey>(
-  key: K
-): Promise<StorageData[K] | undefined> {
-  return new Promise((resolve) => {
-    try {
-      chrome.storage.sync.get(key as string, (value) => {
-        resolve(value[key as string] as StorageData[K] | undefined);
-      });
-    } catch (ex) {
-      console.error(ex);
-      resolve(undefined);
-    }
-  });
-}
-
-/**
- * Chrome의 Sync StorageArea에 개체 저장
- * @param obj - 저장할 객체
- */
-export async function saveObjectInSyncStorage(
-  obj: Partial<StorageData>
-): Promise<void> {
-  return new Promise((resolve) => {
-    try {
-      chrome.storage.sync.set(obj, () => {
-        resolve();
-      });
-    } catch (ex) {
-      console.error(ex);
-      resolve();
-    }
-  });
-}
-
-/**
- * Chrome Sync StorageArea에서 개체 제거
- * @param keys - 제거할 키 또는 키 배열
- */
-export async function removeObjectFromSyncStorage(
-  keys: string | string[]
-): Promise<void> {
-  return new Promise((resolve) => {
-    try {
-      chrome.storage.sync.remove(keys, () => {
-        resolve();
-      });
-    } catch (ex) {
-      console.error(ex);
-      resolve();
-    }
-  });
-}
+// ============ Convenience getters/setters ============
 
 export async function getToken(): Promise<string | undefined> {
-  return getObjectFromLocalStorage(STORAGE_KEYS.TOKEN);
+  return getObjectFromLocalStorage<string>(STORAGE_KEYS.TOKEN);
 }
 
 export async function getGithubUsername(): Promise<string | undefined> {
-  return getObjectFromLocalStorage(STORAGE_KEYS.USERNAME);
+  return getObjectFromLocalStorage<string>(STORAGE_KEYS.USERNAME);
 }
 
-export async function getStats(): Promise<StorageStats | undefined> {
-  return getObjectFromLocalStorage(STORAGE_KEYS.STATS);
+export async function getStats(): Promise<Stats> {
+  const stats = await getObjectFromLocalStorage<Stats>(STORAGE_KEYS.STATS);
+
+  // Return default object if stats is null or undefined
+  if (!stats) {
+    const defaultStats: Stats = {
+      version: "0.0.0",
+      branches: {},
+      submission: {},
+      problems: {},
+    };
+    await saveStats(defaultStats);
+    return defaultStats;
+  }
+
+  // Ensure all required fields exist
+  if (!stats.branches) stats.branches = {};
+  if (!stats.submission) stats.submission = {};
+  if (!stats.problems) stats.problems = {};
+  if (!stats.version) stats.version = "0.0.0";
+
+  return stats;
 }
 
 export async function getHook(): Promise<string | undefined> {
-  return getObjectFromLocalStorage(STORAGE_KEYS.HOOK);
+  return getObjectFromLocalStorage<string>(STORAGE_KEYS.HOOK);
 }
 
-/** settings.html 의 분기 처리 dis_option에서 설정된 값을 반환합니다. */
+/** @deprecated settings.html dis_option에서 설정된 값을 반환합니다. 현재는 사용되지 않습니다. */
 export async function getOrgOption(): Promise<string> {
   try {
-    const option = await getObjectFromLocalStorage(STORAGE_KEYS.ORG_OPTION);
-    return option || 'platform';
-  } catch (_ex) {
-    console.log('The way it works has changed with updates. Update your storage.');
-    await saveObjectInLocalStorage({ [STORAGE_KEYS.ORG_OPTION]: 'platform' });
-    return 'platform';
+    const value = await getObjectFromLocalStorage<string>(STORAGE_KEYS.ORG_OPTION);
+    return value ?? "platform";
+  } catch (ex) {
+    log.warn("The way it works has changed with updates. Update your storage.");
+    await saveObjectInLocalStorage({ [STORAGE_KEYS.ORG_OPTION]: "platform" });
+    return "platform";
   }
 }
 
 export async function getModeType(): Promise<string | undefined> {
-  return getObjectFromLocalStorage(STORAGE_KEYS.MODE_TYPE);
+  return getObjectFromLocalStorage<string>(STORAGE_KEYS.MODE_TYPE);
 }
 
 export async function saveToken(token: string): Promise<void> {
   return saveObjectInLocalStorage({ [STORAGE_KEYS.TOKEN]: token });
 }
 
-export async function saveStats(stats: StorageStats): Promise<void> {
+export async function saveStats(stats: Stats): Promise<void> {
   return saveObjectInLocalStorage({ [STORAGE_KEYS.STATS]: stats });
 }
 
-/**
- * 백준 랭크 경로 필터
- */
+// ============ Path filters for stats ============
+
 export function _baekjoonRankRemoverFilter(path: string): string {
-  return path.replace(/\/(Unrated|Silver|Bronze|Gold|Platinum|Diamond|Ruby|Master)\//g, '/');
+  return path.replace(/\/(Unrated|Silver|Bronze|Gold|Platinum|Diamond|Ruby|Master)\//g, "/");
 }
 
-/**
- * 프로그래머스 랭크 경로 필터
- */
 export function _programmersRankRemoverFilter(path: string): string {
-  return path.replace(/\/(lv[0-9]|unrated)\//g, '/');
+  return path.replace(/\/(lv[0-9]|unrated)\//g, "/");
 }
 
-/**
- * 백준 공백 경로 필터
- */
 export function _baekjoonSpaceRemoverFilter(path: string): string {
-  return path.replace(/( | |&nbsp|&#160|&#8197|%E2%80%85|%20)/g, '');
+  return path.replace(/( | |&nbsp|&#160|&#8197|%E2%80%85|%20)/g, "");
 }
 
-/**
- * SWEA 랭크 경로 필터
- */
 export function _swexpertacademyRankRemoveFilter(path: string): string {
-  return path.replace(/\/D([0-8]+)\//g, '/');
-}
-
-type NestedObject = { [key: string]: NestedObject | string };
-
-/**
- * 객체의 경로에 데이터를 업데이트합니다.
- */
-export function updateObjectDatafromPath(
-  obj: NestedObject,
-  path: string,
-  data: string
-): void {
-  let current: NestedObject = obj;
-  const pathArray = _swexpertacademyRankRemoveFilter(
-    _baekjoonSpaceRemoverFilter(_programmersRankRemoverFilter(_baekjoonRankRemoverFilter(path)))
-  )
-    .split('/')
-    .filter((p) => p !== '');
-
-  for (const p of pathArray.slice(0, -1)) {
-    if (isNull(current[p]) || typeof current[p] === 'string') {
-      current[p] = {};
-    }
-    current = current[p] as NestedObject;
-  }
-
-  const lastKey = pathArray[pathArray.length - 1];
-  if (lastKey) {
-    current[lastKey] = data;
-  }
+  return path.replace(/\/D([0-8]+)\//g, "/");
 }
 
 /**
- * 객체의 경로에서 데이터를 가져옵니다.
+ * Apply all path filters
  */
-export function getObjectDatafromPath(obj: NestedObject, path: string): string | null {
-  let current: NestedObject | string = obj;
-  const pathArray = _swexpertacademyRankRemoveFilter(
+function applyPathFilters(path: string): string {
+  return _swexpertacademyRankRemoveFilter(
     _baekjoonSpaceRemoverFilter(_programmersRankRemoverFilter(_baekjoonRankRemoverFilter(path)))
-  )
-    .split('/')
-    .filter((p) => p !== '');
-
-  for (const p of pathArray.slice(0, -1)) {
-    if (typeof current === 'string' || isNull((current as NestedObject)[p])) {
-      return null;
-    }
-    current = (current as NestedObject)[p];
-  }
-
-  const lastKey = pathArray[pathArray.length - 1];
-  if (lastKey && typeof current === 'object' && current !== null) {
-    const value = current[lastKey];
-    return typeof value === 'string' ? value : null;
-  }
-  return null;
+  );
 }
 
+// ============ Object path utilities ============
+
+type NestedObject = Record<string, unknown>;
+
+/**
+ * Update nested object data from path
+ * @param obj - Target object
+ * @param path - Path like "owner/repo/folder/file.js"
+ * @param data - Data to set at path
+ */
+export function updateObjectDatafromPath(obj: NestedObject | null | undefined, path: string, data: unknown): void {
+  if (!obj) {
+    log.error("updateObjectDatafromPath: obj is null or undefined", { obj, path, data });
+    return;
+  }
+
+  try {
+    let current: NestedObject = obj;
+    const pathArray = applyPathFilters(path)
+      .split("/")
+      .filter((p) => p !== "");
+
+    for (const p of pathArray.slice(0, -1)) {
+      if (isNull(current[p])) {
+        current[p] = {};
+      }
+      current = current[p] as NestedObject;
+    }
+
+    const lastKey = pathArray.pop();
+    if (lastKey) {
+      current[lastKey] = data;
+    }
+  } catch (error) {
+    log.error("updateObjectDatafromPath error:", error, { obj, path, data });
+  }
+}
+
+/**
+ * Get nested object data from path
+ * @param obj - Source object
+ * @param path - Path like "owner/repo/folder/file.js"
+ * @returns Data at path or null
+ */
+export function getObjectDatafromPath(obj: NestedObject | null | undefined, path: string): unknown {
+  if (!obj) {
+    log.warn("getObjectDatafromPath: obj is null or undefined", { obj, path });
+    return null;
+  }
+
+  try {
+    let current: NestedObject = obj;
+    const pathArray = applyPathFilters(path)
+      .split("/")
+      .filter((p) => p !== "");
+
+    for (const p of pathArray.slice(0, -1)) {
+      if (isNull(current[p])) {
+        return null;
+      }
+      current = current[p] as NestedObject;
+    }
+
+    const lastKey = pathArray.pop();
+    return lastKey ? current[lastKey] : null;
+  } catch (error) {
+    log.error("getObjectDatafromPath error:", error, { obj, path });
+    return null;
+  }
+}
+
+/**
+ * Update stats SHA from path
+ */
 export async function updateStatsSHAfromPath(path: string, sha: string): Promise<void> {
   const stats = await getStats();
-  if (stats) {
-    updateObjectDatafromPath(stats.submission as NestedObject, path, sha);
-    await saveStats(stats);
+
+  if (!stats.submission) {
+    stats.submission = {};
   }
+
+  updateObjectDatafromPath(stats.submission as NestedObject, path, sha);
+  await saveStats(stats);
 }
 
+/**
+ * Get stats SHA from path
+ */
 export async function getStatsSHAfromPath(path: string): Promise<string | null> {
   const stats = await getStats();
-  if (stats) {
-    return getObjectDatafromPath(stats.submission as NestedObject, path);
+
+  if (!stats.submission) {
+    return null;
   }
-  return null;
+
+  return getObjectDatafromPath(stats.submission as NestedObject, path) as string | null;
 }
 
-export async function updateLocalStorageStats(): Promise<StorageStats | undefined> {
-  const hook = await getHook();
-  const token = await getToken();
-
-  if (!hook || !token) {
-    return undefined;
-  }
-
-  const git = new GitHub(hook, token);
-  const stats = await getStats();
-
-  if (!stats) {
-    return undefined;
-  }
-
-  const treeItems: GitHubTreeItem[] = [];
-
-  const tree = await git.getTree();
-  if (tree) {
-    tree.forEach((item: GitHubTreeItem) => {
-      if (item.type === 'blob') {
-        treeItems.push(item);
-      }
-    });
-  }
-
-  const { submission } = stats;
-  treeItems.forEach((item) => {
-    updateObjectDatafromPath(submission as NestedObject, `${hook}/${item.path}`, item.sha);
-  });
-
-  const defaultBranch = await git.getDefaultBranchOnRepo();
-  if (!stats.branches) {
-    stats.branches = {};
-  }
-  stats.branches[hook] = defaultBranch;
-  await saveStats(stats);
-  log('update stats', stats);
-  return stats;
-}
-
-// Template data is a flexible object for directory template generation
-// It includes common problem fields plus additional template-specific properties
-type TemplateData = {
-  problemId?: string;
-  title?: string;
-  level?: string;
-  language?: string;
-  runtime?: string;
-  memory?: string;
-  submissionTime?: string;
-  length?: string;
-  link?: string;
-  examSequence?: string | number | null;
-  difficulty?: string;
-  division?: string;
-  problem_tags?: string[];
-  problem_description?: string;
-  problem_input?: string;
-  problem_output?: string;
-  result_message?: string;
-} | null;
-
-export async function getDirNameByOrgOption(
-  dirName: string,
-  language: string,
-  data: TemplateData = null
-): Promise<string> {
+/**
+ * Update local storage stats from GitHub repository
+ */
+export async function updateLocalStorageStats(): Promise<Stats> {
   try {
-    let platform: PlatformType | '' = '';
-    if (dirName.startsWith('백준/')) {
-      platform = '백준';
-    } else if (dirName.startsWith('프로그래머스/')) {
-      platform = '프로그래머스';
-    } else if (dirName.startsWith('SWEA/')) {
-      platform = 'SWEA';
-    } else if (dirName.startsWith('goormlevel/')) {
-      platform = 'goormlevel';
+    const hook = await getHook();
+    const token = await getToken();
+
+    if (!hook || !token) {
+      log.error("Missing hook or token for updateLocalStorageStats", { hook, token });
+      return await getStats();
     }
 
-    const orgOption = await getOrgOption();
-    const customTemplate = await getObjectFromLocalStorage(STORAGE_KEYS.DIR_TEMPLATE);
+    const git = new GitHub(hook, token);
+    const stats = await getStats();
 
-    if (orgOption === 'custom' && platform) {
+    interface TreeItem {
+      type: string;
+      path: string;
+      sha: string;
+    }
+
+    const treeItems: TreeItem[] = [];
+
+    // Ensure required fields exist
+    if (!stats.submission) stats.submission = {};
+    if (!stats.branches) stats.branches = {};
+
+    try {
+      const tree = await git.getTree();
+      if (Array.isArray(tree)) {
+        tree.forEach((item: TreeItem) => {
+          if (item && item.type === "blob" && item.path) {
+            treeItems.push(item);
+          }
+        });
+      } else {
+        log.warn("getTree returned invalid data:", tree);
+      }
+    } catch (error) {
+      log.error("Error getting tree from GitHub:", error);
+    }
+
+    // Update submission data
+    if (stats.submission) {
+      treeItems.forEach((item) => {
+        try {
+          updateObjectDatafromPath(stats.submission as NestedObject, `${hook}/${item.path}`, item.sha);
+        } catch (error) {
+          log.error("Error updating object data from path:", error, item);
+        }
+      });
+    }
+
+    // Get default branch
+    try {
+      const defaultBranch = await git.getDefaultBranchOnRepo();
+      if (defaultBranch && stats.branches) {
+        stats.branches[hook] = defaultBranch;
+      }
+    } catch (error) {
+      log.error("Error getting default branch:", error);
+      if (stats.branches) {
+        stats.branches[hook] = "main";
+      }
+    }
+
+    await saveStats(stats);
+    log.debug("update stats", stats);
+    return stats;
+  } catch (error) {
+    log.error("Critical error in updateLocalStorageStats:", error);
+    return await getStats();
+  }
+}
+
+/**
+ * Get directory name by template
+ * Supports both legacy org_option behavior and custom templates
+ */
+export async function getDirNameByTemplate(
+  dirName: string,
+  language: string,
+  data: Record<string, unknown> | null = null
+): Promise<string> {
+  try {
+    let platform: PlatformName | "" = "";
+    if (dirName.startsWith("백준/")) {
+      platform = "백준";
+    } else if (dirName.startsWith("프로그래머스/")) {
+      platform = "프로그래머스";
+    } else if (dirName.startsWith("SWEA/")) {
+      platform = "SW Expert Academy";
+    }
+
+    const useCustomTemplate = await getObjectFromLocalStorage<boolean>(STORAGE_KEYS.USE_CUSTOM_TEMPLATE);
+    const customTemplate = await getObjectFromLocalStorage<string>(STORAGE_KEYS.DIR_TEMPLATE);
+
+    if (useCustomTemplate && customTemplate) {
       return EnhancedTemplateService.getDirNameWithTemplate(
         platform,
         dirName,
         language,
         data,
         true,
-        customTemplate || '',
-        'custom'
+        customTemplate,
+        "custom"
       );
     }
-    if (orgOption === 'language') {
+
+    // Legacy org_option behavior for backwards compatibility
+    const orgOption = await getOrgOption();
+    if (orgOption === "language") {
       return `${language}/${dirName}`;
     }
 
+    // Default: platform option - return dirName as-is
     return dirName;
   } catch (error) {
-    console.error('디렉토리 구조 생성 중 오류가 발생했습니다:', error);
+    log.error("디렉토리 구조 생성 중 오류가 발생했습니다:", error);
     return dirName;
   }
 }
 
+/**
+ * Initialize storage with sync from chrome.storage.sync
+ */
 export function initializeStorage(): void {
-  getObjectFromLocalStorage(STORAGE_KEYS.IS_SYNC).then((data) => {
-    const keys: StorageKey[] = [
+  getObjectFromLocalStorage<{ isSync?: boolean }>(STORAGE_KEYS.IS_SYNC).then((data) => {
+    const keys = [
       STORAGE_KEYS.TOKEN,
       STORAGE_KEYS.USERNAME,
       STORAGE_KEYS.PIPE,
@@ -397,36 +402,57 @@ export function initializeStorage(): void {
       STORAGE_KEYS.HOOK,
       STORAGE_KEYS.MODE_TYPE,
     ];
-    if (data) {
-      console.log('BaekjoonHub Local storage already synced!');
+
+    if (data && data.isSync) {
+      log.info("SsafyToday Local storage already synced!");
       return;
     }
 
-    keys.forEach((key) => {
-      chrome.storage.sync.get(key, (syncData) => {
-        saveObjectInLocalStorage({ [key]: syncData[key] });
-      });
+    keys.forEach(async (key) => {
+      const localValue = await getObjectFromLocalStorage(key);
+      if (isNull(localValue)) {
+        chrome.storage.sync.get(key, (syncData: Record<string, unknown>) => {
+          saveObjectInLocalStorage({ [key]: syncData[key] });
+        });
+      }
     });
 
     saveObjectInLocalStorage({ [STORAGE_KEYS.IS_SYNC]: true }).then(() => {
-      console.log('BaekjoonHub Synced to local values');
+      log.info("SsafyToday Synced to local values");
     });
   });
 
   getStats().then((stats) => {
-    const newStats: StorageStats = stats || {
-      version: '0.0.0',
-      branches: {},
-      submission: {},
-      problems: {},
-    };
+    let needsUpdate = false;
 
-    if (isNull(newStats.version)) newStats.version = '0.0.0';
-    if (isNull(newStats.branches) || newStats.version !== getVersion()) newStats.branches = {};
-    if (isNull(newStats.submission) || newStats.version !== getVersion()) newStats.submission = {};
-    if (isNull(newStats.problems) || newStats.version !== getVersion()) newStats.problems = {};
+    if (!stats.version || stats.version === "0.0.0") {
+      stats.version = getVersion();
+      needsUpdate = true;
+    }
 
-    newStats.version = getVersion();
-    saveStats(newStats);
+    if (!stats.branches || stats.version !== getVersion()) {
+      stats.branches = {};
+      needsUpdate = true;
+    }
+
+    if (!stats.submission || stats.version !== getVersion()) {
+      stats.submission = {};
+      needsUpdate = true;
+    }
+
+    if (!stats.problems || stats.version !== getVersion()) {
+      stats.problems = {};
+      needsUpdate = true;
+    }
+
+    if (stats.version !== getVersion()) {
+      stats.version = getVersion();
+      needsUpdate = true;
+    }
+
+    if (needsUpdate) {
+      saveStats(stats);
+    }
   });
 }
+

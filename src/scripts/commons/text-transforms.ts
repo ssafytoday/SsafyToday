@@ -1,222 +1,218 @@
 /**
- * 템플릿에서 사용할 수 있는 텍스트 변환 유틸리티 함수들
- * 기존 util.js의 함수들을 템플릿에 적합하게 재구성
+ * Template text transformation utility functions
+ * Reorganized from util.js for template use
  */
-
 import {
   b64DecodeUnicode,
   b64EncodeUnicode,
   escapeHtml,
   unescapeHtml,
   convertSingleCharToDoubleChar,
-} from './util';
+} from "./util";
 
 /**
- * 문자열에서 지정한 부분 문자열을 다른 문자열로 교체합니다
- * @param text - 원본 문자열
- * @param searchValue - 찾을 값(문자열 또는 정규식)
- * @param replaceValue - 교체할 값
- * @returns 교체된 문자열
+ * Replace substring in string with another string
+ * @param text - Original string
+ * @param searchValue - Value to find (string or RegExp)
+ * @param replaceValue - Value to replace with
+ * @returns Replaced string
  */
 export function replaceText(
   text: string,
   searchValue: string | RegExp,
   replaceValue: string
 ): string {
-  if (typeof text !== 'string') return text;
+  if (typeof text !== "string") return text;
   return text.replace(searchValue, replaceValue);
 }
 
 /**
- * 문자열 양쪽의 공백을 제거합니다
- * @param text - 처리할 텍스트
- * @returns 공백이 제거된 텍스트
+ * Trim whitespace from both ends of string
+ * @param text - Text to process
+ * @returns Trimmed text
  */
 export function trim(text: string): string {
-  if (typeof text !== 'string') return text;
+  if (typeof text !== "string") return text;
   return text.trim();
 }
 
 /**
- * 배열을 지정된 구분자로 연결합니다
- * @param arr - 연결할 배열
- * @param separator - 구분자 (기본: '-')
- * @returns 연결된 문자열
+ * Join array with specified separator
+ * @param arr - Array to join
+ * @param separator - Separator (default: '-')
+ * @returns Joined string
  */
-export function arrayJoin<T>(arr: T[], separator: string = '-'): string {
+export function arrayJoin<T>(arr: T[], separator = "-"): string {
   if (!Array.isArray(arr)) return String(arr);
   return arr.join(separator);
 }
 
 /**
- * 문자열에서 첫 번째 공백 이후의 모든 내용을 제거합니다
- * 주로 level에서 "Bronze V" → "Bronze" 변환에 사용
- * @param text - 처리할 텍스트
- * @returns 처리된 텍스트
+ * Remove everything after first space in string
+ * Mainly used for converting "Bronze V" → "Bronze"
+ * @param text - Text to process
+ * @returns Processed text
  */
 export function removeAfterSpace(text: string): string {
-  if (typeof text !== 'string') return text;
-  return text.replace(/ .*/, '');
+  if (typeof text !== "string") return text;
+  return text.replace(/ .*/, "");
 }
 
 /**
- * 문자열을 URL 안전한 형태로 변환합니다
- * @param text - 변환할 텍스트
- * @returns URL 안전한 텍스트
+ * Convert string to URL-safe format
+ * @param text - Text to convert
+ * @returns URL-safe text
  */
 export function urlSafe(text: string): string {
-  if (typeof text !== 'string') return text;
+  if (typeof text !== "string") return text;
   return text
-    .replace(/[\s\\/\\:*?"<>|]/g, '_') // 특수문자를 언더스코어로 변경
-    .replace(/_{2,}/g, '_') // 연속된 언더스코어를 하나로
-    .replace(/^_|_$/g, ''); // 앞뒤 언더스코어 제거
+    .replace(/[\s\\/\\:*?"<>|]/g, "_") // Replace special chars with underscore
+    .replace(/_{2,}/g, "_") // Reduce consecutive underscores to one
+    .replace(/^_|_$/g, ""); // Remove leading/trailing underscores
 }
 
 /**
- * 문자열을 kebab-case로 변환합니다
- * @param text - 변환할 텍스트
- * @returns kebab-case로 변환된 텍스트
+ * Convert string to kebab-case
+ * @param text - Text to convert
+ * @returns kebab-case text
  */
 export function toKebabCase(text: string): string {
-  if (typeof text !== 'string') return text;
+  if (typeof text !== "string") return text;
   return text
     .replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)
-    .replace(/[\s_]+/g, '-')
-    .replace(/^-|-$/g, '')
+    .replace(/[\s_]+/g, "-")
+    .replace(/^-|-$/g, "")
     .toLowerCase();
 }
 
 /**
- * 문자열을 snake_case로 변환합니다
- * @param text - 변환할 텍스트
- * @returns snake_case로 변환된 텍스트
+ * Convert string to snake_case
+ * @param text - Text to convert
+ * @returns snake_case text
  */
 export function toSnakeCase(text: string): string {
-  if (typeof text !== 'string') return text;
+  if (typeof text !== "string") return text;
   return text
     .replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`)
-    .replace(/[\s-]+/g, '_')
-    .replace(/^_|_$/g, '')
+    .replace(/[\s-]+/g, "_")
+    .replace(/^_|_$/g, "")
     .toLowerCase();
 }
 
 /**
- * 문자열을 camelCase로 변환합니다
- * @param text - 변환할 텍스트
- * @returns camelCase로 변환된 텍스트
+ * Convert string to camelCase
+ * @param text - Text to convert
+ * @returns camelCase text
  */
 export function toCamelCase(text: string): string {
-  if (typeof text !== 'string') return text;
+  if (typeof text !== "string") return text;
   return text
-    .replace(/[\s\-_]+(.)/g, (_, char: string) => char.toUpperCase())
+    .replace(/[\s\-_]+(.)/g, (_, char) => char.toUpperCase())
     .replace(/^[A-Z]/, (char) => char.toLowerCase());
 }
 
 /**
- * 문자열을 PascalCase로 변환합니다
- * @param text - 변환할 텍스트
- * @returns PascalCase로 변환된 텍스트
+ * Convert string to PascalCase
+ * @param text - Text to convert
+ * @returns PascalCase text
  */
 export function toPascalCase(text: string): string {
-  if (typeof text !== 'string') return text;
+  if (typeof text !== "string") return text;
   return text
-    .replace(/[\s\-_]+(.)/g, (_, char: string) => char.toUpperCase())
+    .replace(/[\s\-_]+(.)/g, (_, char) => char.toUpperCase())
     .replace(/^[a-z]/, (char) => char.toUpperCase());
 }
 
 /**
- * 문자열의 길이를 제한합니다
- * @param text - 제한할 텍스트
- * @param maxLength - 최대 길이
- * @param ellipsis - 말줄임표 (기본: '...')
- * @returns 길이가 제한된 텍스트
+ * Limit string length
+ * @param text - Text to truncate
+ * @param maxLength - Maximum length
+ * @param ellipsis - Ellipsis (default: '...')
+ * @returns Truncated text
  */
-export function truncate(text: string, maxLength: number = 50, ellipsis: string = '...'): string {
-  if (typeof text !== 'string') return text;
+export function truncate(text: string, maxLength = 50, ellipsis = "..."): string {
+  if (typeof text !== "string") return text;
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength - ellipsis.length) + ellipsis;
 }
 
 /**
- * 문자열에서 숫자만 추출합니다
- * @param text - 처리할 텍스트
- * @returns 숫자만 포함된 텍스트
+ * Extract only numbers from string
+ * @param text - Text to process
+ * @returns Text containing only numbers
  */
 export function extractNumbers(text: string): string {
-  if (typeof text !== 'string') return text;
-  return text.replace(/[^0-9]/g, '');
+  if (typeof text !== "string") return text;
+  return text.replace(/[^0-9]/g, "");
 }
 
 /**
- * 문자열에서 영문자만 추출합니다
- * @param text - 처리할 텍스트
- * @returns 영문자만 포함된 텍스트
+ * Extract only letters from string
+ * @param text - Text to process
+ * @returns Text containing only letters
  */
 export function extractLetters(text: string): string {
-  if (typeof text !== 'string') return text;
-  return text.replace(/[^a-zA-Z]/g, '');
+  if (typeof text !== "string") return text;
+  return text.replace(/[^a-zA-Z]/g, "");
 }
 
 /**
- * 날짜를 한국어 형식으로 포맷합니다
- * @param dateString - 날짜 문자열
- * @returns 한국어 형식의 날짜
+ * Format date to Korean format
+ * @param dateString - Date string
+ * @returns Korean formatted date
  */
 export function formatKoreanDate(dateString: string): string {
-  if (typeof dateString !== 'string') return dateString;
+  if (typeof dateString !== "string") return dateString;
   const date = new Date(dateString);
   if (isNaN(date.getTime())) return dateString;
-  return date.toLocaleDateString('ko-KR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
+  return date.toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
 }
 
+// Text transform function type - compatible with safe-template-parser
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type TransformFunction = (...args: any[]) => string;
+
+// Text transform function interface
 export interface TextTransforms {
-  [key: string]: (value: string, ...args: string[]) => string;
-  safe: (text: string) => string;
-  urlSafe: (text: string) => string;
-  truncate: (text: string, maxLength?: string, ellipsis?: string) => string;
-  trim: (text: string) => string;
-  extractNumbers: (text: string) => string;
-  extractLetters: (text: string) => string;
-  arrayJoin: (arr: string, separator?: string) => string;
-  removeAfterSpace: (text: string) => string;
-  toKebabCase: (text: string) => string;
-  toSnakeCase: (text: string) => string;
-  toCamelCase: (text: string) => string;
-  toPascalCase: (text: string) => string;
-  htmlEscape: (text: string) => string;
-  htmlUnescape: (text: string) => string;
-  base64Encode: (str: string) => string;
-  base64Decode: (b64str: string) => string;
+  safe: typeof convertSingleCharToDoubleChar;
+  urlSafe: typeof urlSafe;
+  truncate: typeof truncate;
+  trim: typeof trim;
+  extractNumbers: typeof extractNumbers;
+  extractLetters: typeof extractLetters;
+  arrayJoin: typeof arrayJoin;
+  removeAfterSpace: typeof removeAfterSpace;
+  toKebabCase: typeof toKebabCase;
+  toSnakeCase: typeof toSnakeCase;
+  toCamelCase: typeof toCamelCase;
+  toPascalCase: typeof toPascalCase;
+  htmlEscape: typeof escapeHtml;
+  htmlUnescape: typeof unescapeHtml;
+  base64Encode: typeof b64EncodeUnicode;
+  base64Decode: typeof b64DecodeUnicode;
+  [key: string]: TransformFunction | undefined;
 }
 
 export const textTransforms: TextTransforms = {
-  // 기본 함수들
+  // Basic functions
   safe: convertSingleCharToDoubleChar,
   urlSafe,
-  truncate: (text: string, maxLength?: string, ellipsis?: string) =>
-    truncate(text, maxLength ? parseInt(maxLength, 10) : 50, ellipsis),
+  truncate,
   trim,
   extractNumbers,
   extractLetters,
-  arrayJoin: (arr: string, separator?: string) => {
-    try {
-      const parsed = JSON.parse(arr);
-      return Array.isArray(parsed) ? parsed.join(separator || '-') : arr;
-    } catch {
-      return arr;
-    }
-  },
+  arrayJoin,
   removeAfterSpace,
   toKebabCase,
   toSnakeCase,
   toCamelCase,
   toPascalCase,
 
-  // HTML & 인코딩
+  // HTML & encoding
   htmlEscape: escapeHtml,
   htmlUnescape: unescapeHtml,
   base64Encode: b64EncodeUnicode,

@@ -1,23 +1,31 @@
-import { convertSingleCharToDoubleChar } from '@/commons/util';
-import { getDateString } from '@/commons/ui-util';
-import { getDirNameByOrgOption } from '@/commons/storage';
+/**
+ * Programmers platform parsing functions
+ * Handles problem description and submission code parsing
+ */
+import { convertSingleCharToDoubleChar } from "@/commons/util";
+import { getDateString } from "@/commons/ui-util";
+import { getDirNameByTemplate } from "@/commons/storage";
+import log from "@/commons/logger";
+import { ReadmeBuilder } from "@/commons/readme-builder";
 
-interface ProgrammersOriginData {
-  link: string;
+// Problem data interface for Programmers
+interface ProgrammersProblemOrigin {
+  problemDescription: string;
   problemId: string;
   level: string;
-  title: string;
-  problemDescription: string;
+  resultMessage: string;
   division: string;
   languageExtension: string;
-  code: string;
-  resultMessage: string;
+  title: string;
   runtime: string;
   memory: string;
+  code: string;
   language: string;
+  link: string;
 }
 
-interface ProgrammersData {
+// Parsed problem data interface
+interface ParsedProblemData {
   problemId: string;
   directory: string;
   message: string;
@@ -26,20 +34,12 @@ interface ProgrammersData {
   code: string;
 }
 
-/*
-  문제가 맞았다면 문제 관련 데이터를 파싱하는 함수의 모음입니다.
-  모든 해당 파일의 모든 함수는 parseData()를 통해 호출됩니다.
-*/
-
-/*
-  bojData를 초기화하는 함수로 문제 요약과 코드를 파싱합니다.
-  - directory : 레포에 기록될 폴더명
-  - message : 커밋 메시지
-  - fileName : 파일명
-  - readme : README.md에 작성할 내용
-  - code : 소스코드 내용
-*/
-export async function makeData(origin: ProgrammersOriginData): Promise<ProgrammersData> {
+/**
+ * Create upload data from parsed problem info
+ * @param origin - Original problem data
+ * @returns Formatted data for upload
+ */
+export async function makeData(origin: ProgrammersProblemOrigin): Promise<ParsedProblemData> {
   const {
     problemDescription,
     problemId,
@@ -55,11 +55,11 @@ export async function makeData(origin: ProgrammersOriginData): Promise<Programme
     link,
   } = origin;
 
-  // 기본 디렉토리 경로 생성
+  // Build base directory path
   const baseDirPath = `프로그래머스/${level}/${problemId}. ${convertSingleCharToDoubleChar(title)}`;
 
-  // 공통 업로드 서비스를 사용하여 디렉토리 경로 생성
-  const directory = await getDirNameByOrgOption(baseDirPath, language, {
+  // Get directory from template
+  const directory = await getDirNameByTemplate(baseDirPath, language, {
     problemId,
     title,
     level,
@@ -68,31 +68,26 @@ export async function makeData(origin: ProgrammersOriginData): Promise<Programme
     runtime,
     submissionTime: getDateString(new Date(Date.now())),
     language,
-    problem_description: problemDescription,
-    result_message: resultMessage,
+    problemDescription,
+    resultMessage,
     link,
   });
 
-  const levelWithLv = `${level}`.includes('lv') ? level : `lv${level}`.replace('lv', 'level ');
-  const message = `[${levelWithLv}] Title: ${title}, Time: ${runtime}, Memory: ${memory} -BaekjoonHub`;
+  const levelWithLv = `${level}`.includes("lv") ? level : `lv${level}`.replace("lv", "level ");
+  const message = `[${levelWithLv}] Title: ${title}, Time: ${runtime}, Memory: ${memory} -SsafyToday`;
   const fileName = `${convertSingleCharToDoubleChar(title)}.${languageExtension}`;
   const dateInfo = getDateString(new Date(Date.now()));
 
-  const readme =
-    `# [${levelWithLv}] ${title} - ${problemId} \n\n` +
-    `[문제 링크](${link}) \n\n` +
-    `### 성능 요약\n\n` +
-    `메모리: ${memory}, ` +
-    `시간: ${runtime}\n\n` +
-    `### 구분\n\n` +
-    `${division.replace('/', ' > ')}\n\n` +
-    `### 채점결과\n\n` +
-    `${resultMessage}\n\n` +
-    `### 제출 일자\n\n` +
-    `${dateInfo}\n\n` +
-    `### 문제 설명\n\n` +
-    `${problemDescription}\n\n` +
-    `> 출처: 프로그래머스 코딩 테스트 연습, https://school.programmers.co.kr/learn/challenges`;
+  const readme = new ReadmeBuilder()
+    .addTitle(levelWithLv, title, problemId)
+    .addProblemLink(link)
+    .addPerformance(memory, runtime)
+    .addSection("구분", division.replace("/", " > "))
+    .addSection("채점결과", resultMessage)
+    .addSubmissionDate(dateInfo)
+    .addProblemDescription(problemDescription)
+    .addSource("프로그래머스 코딩 테스트 연습", "https://school.programmers.co.kr/learn/challenges")
+    .build();
 
   return {
     problemId,
@@ -105,59 +100,157 @@ export async function makeData(origin: ProgrammersOriginData): Promise<Programme
 }
 
 /**
- * 페이지에서 문제 데이터를 파싱합니다.
+ * Parse problem data from the current page
+ * @returns Parsed problem data for upload
  */
-export async function parseData(): Promise<ProgrammersData> {
-  const metaUrl = document.querySelector('head > meta[name$=url]') as HTMLMetaElement | null;
-  const link = metaUrl?.content?.replace(/\?.*/g, '').trim() || '';
+export async function parseData(): Promise<ParsedProblemData> {
+  const linkMeta = document.querySelector('head > meta[name$="url"]') as HTMLMetaElement | null;
+  const link = linkMeta?.content?.replace(/\?.*/g, "").trim() || "";
 
-  const lessonContent = document.querySelector('div.main > div.lesson-content');
-  const problemId = lessonContent?.getAttribute('data-lesson-id') || '';
-  const level =
-    document.querySelector('body > div.main > div.lesson-content')?.getAttribute('data-challenge-level') || '';
+  const lessonContent = document.querySelector("div.main > div.lesson-content");
+  const problemId = lessonContent?.getAttribute("data-lesson-id") || "";
 
-  const breadcrumb = document.querySelector('ol.breadcrumb');
+  const bodyLessonContent = document.querySelector("body > div.main > div.lesson-content");
+  const level = bodyLessonContent?.getAttribute("data-challenge-level") || "";
+
+  const breadcrumb = document.querySelector("ol.breadcrumb");
   const division = breadcrumb
     ? [...breadcrumb.childNodes]
-        .filter((x) => (x as HTMLElement).className !== 'active')
+        .filter((x) => (x as Element).className !== "active")
         .map((x) => (x as HTMLElement).innerText)
         .map((x) => convertSingleCharToDoubleChar(x))
         .reduce((a, b) => `${a}/${b}`)
-    : '';
+    : "";
 
-  const titleEl = document.querySelector('.algorithm-title .challenge-title');
-  const title = titleEl?.textContent?.replace(/\\n/g, '').trim() || '';
+  const titleElement = document.querySelector(".algorithm-title .challenge-title");
+  const title = titleElement?.textContent?.replace(/\\n/g, "").trim() || "";
 
-  const descriptionEl = document.querySelector('div.guide-section-description > div.markdown');
-  const problemDescription = descriptionEl?.innerHTML || '';
+  const descElement = document.querySelector("div.guide-section-description > div.markdown");
+  const problemDescription = descElement?.innerHTML || "";
 
-  const langNavEl = document.querySelector('div.editor > ul > li.nav-item > a') as HTMLElement | null;
-  const languageExtension = langNavEl?.innerText?.split('.')[1] || 'txt';
+  const editorTab = document.querySelector("div.editor > ul > li.nav-item > a") as HTMLElement | null;
+  const languageExtension = editorTab?.innerText?.split(".")[1] || "txt";
 
-  const codeEl = document.querySelector('textarea#code') as HTMLTextAreaElement | null;
-  const code = codeEl?.value || '';
+  // Try multiple methods to get the code
+  let code = "";
 
-  const consoleMessages = [...document.querySelectorAll('#output .console-message')];
+  // Method 1: Standard textarea#code
+  const textareaCode = document.querySelector("textarea#code") as HTMLTextAreaElement | null;
+  if (textareaCode?.value) {
+    code = textareaCode.value;
+    log.debug("[SsafyToday]: Found code in textarea");
+  }
+
+  // Method 2: data-type="code" input (fill-in-the-blank problems)
+  if (!code) {
+    const codeInput = document.querySelector(
+      "input[data-type='code'][data-language]"
+    ) as HTMLInputElement | null;
+    if (codeInput?.value) {
+      code = codeInput.value;
+      log.debug("[SsafyToday]: Found code in data-type input");
+    }
+  }
+
+  // Method 3: Find hidden inputs with numeric IDs (submitted code storage)
+  if (!code) {
+    const allInputs = document.querySelectorAll("input[type='hidden']");
+    for (const input of allInputs) {
+      const inputEl = input as HTMLInputElement;
+      if (inputEl.id && /^\d+$/.test(inputEl.id) && inputEl.value) {
+        // Check for Java code pattern
+        if (inputEl.value.includes("public class") || inputEl.value.includes("import java")) {
+          code = inputEl.value;
+          log.debug("[SsafyToday]: Found code in hidden input:", inputEl.id);
+          break;
+        }
+      }
+    }
+  }
+
+  // Method 4: Fill-in-the-blank problems - combine template with user input
+  if (!code) {
+    const algorithmType = document
+      .querySelector("div.lesson-content")
+      ?.getAttribute("data-algorithm-type");
+    if (algorithmType === "fill" || document.querySelector(".code-editor input[type='text']")) {
+      log.debug("[SsafyToday]: Processing as fill-in-the-blank problem");
+
+      const initialCodeElement = document.querySelector(
+        "input[id^='initial_code_']"
+      ) as HTMLInputElement | null;
+      if (initialCodeElement?.value) {
+        let initialCode = initialCodeElement.value;
+
+        // Get user input values
+        const inputFields = document.querySelectorAll("input[id^='input_code_'][type='text']");
+        const userInputs = Array.from(inputFields).map(
+          (input) => (input as HTMLInputElement).value || ""
+        );
+
+        // Replace @@@ markers with user inputs
+        if (initialCode.includes("@@@")) {
+          userInputs.forEach((input) => {
+            initialCode = initialCode.replace("@@@", input);
+          });
+        }
+        code = initialCode;
+        log.debug("[SsafyToday]: Fill-in-the-blank code generated");
+      }
+    }
+  }
+
+  // Method 5: Extract from code editor DOM (last resort)
+  if (!code) {
+    const codeEditor = document.querySelector(".code-editor");
+    if (codeEditor) {
+      const codeContainer = codeEditor.querySelector(".rouge-code");
+      if (codeContainer) {
+        const clonedContainer = codeContainer.cloneNode(true) as HTMLElement;
+
+        // Replace input fields with their values
+        const inputs = clonedContainer.querySelectorAll("input[type='text']");
+        inputs.forEach((input) => {
+          const inputEl = input as HTMLInputElement;
+          const value = inputEl.value || "";
+          const textNode = document.createTextNode(value);
+          inputEl.parentNode?.replaceChild(textNode, inputEl);
+        });
+
+        code = clonedContainer.textContent || "";
+        log.debug("[SsafyToday]: Extracted code from DOM");
+      }
+    }
+  }
+
+  log.debug("[SsafyToday]: Final code length:", code.length);
+
+  if (!code) {
+    log.warn("[SsafyToday]: Could not find code");
+    code = "";
+  }
+
+  // Parse result message
   const resultMessage =
-    consoleMessages
-      .map((node) => node.textContent || '')
-      .filter((text) => text.includes(':'))
-      .reduce((cur, next) => (cur ? `${cur}<br/>${next}` : next), '') || 'Empty';
+    [...document.querySelectorAll("#output .console-message")]
+      .map((node) => node.textContent || "")
+      .filter((text) => text.includes(":"))
+      .reduce((cur, next) => (cur ? `${cur}<br/>${next}` : next), "") || "Empty";
 
-  const resultCells = [...document.querySelectorAll('td.result.passed')];
-  const [runtime, memory] = resultCells
+  // Parse runtime and memory
+  const [runtime, memory] = [...document.querySelectorAll("td.result.passed")]
     .map((x) => (x as HTMLElement).innerText)
-    .map((x) => x.replace(/[^., 0-9a-zA-Z]/g, '').trim())
-    .map((x) => x.split(', '))
-    .reduce((x, y) => (Number(x[0].slice(0, -2)) > Number(y[0].slice(0, -2)) ? x : y), [
-      '0.00ms',
-      '0.0MB',
-    ])
-    .map((x) => x.replace(/(?<=[0-9])(?=[A-Za-z])/, ' '));
+    .map((x) => x.replace(/[^., 0-9a-zA-Z]/g, "").trim())
+    .map((x) => x.split(", "))
+    .reduce(
+      (x, y) => (Number(x[0].slice(0, -2)) > Number(y[0].slice(0, -2)) ? x : y),
+      ["0.00ms", "0.0MB"]
+    )
+    .map((x) => x.replace(/(?<=[0-9])(?=[A-Za-z])/, " "));
 
-  /* 프로그래밍 언어별 폴더 정리 옵션을 위한 언어 값 가져오기 */
-  const langButtonEl = document.querySelector('div#tour7 > button');
-  const language = langButtonEl?.textContent?.trim() || '';
+  // Get language for folder organization
+  const languageButton = document.querySelector("div#tour7 > button");
+  const language = languageButton?.textContent?.trim() || "";
 
   return makeData({
     link,
