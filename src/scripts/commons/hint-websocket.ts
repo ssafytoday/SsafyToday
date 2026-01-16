@@ -51,6 +51,19 @@ const HINT_SYSTEM_PROMPT = `### Role Definition
 - 데이터를 꼭 두 번 훑어야만 답을 구할 수 있을까요? 한 번만 훑으면서 처리할 방법은 없을까요?
 - Java에서 Scanner 대신 더 빠른 입출력 방식을 알고 있나요?`;
 
+// Fallback prompt for generating suggestions when AI omits them
+const SUGGESTION_FALLBACK_PROMPT = `방금 학생과 나눈 대화를 바탕으로, 학생이 다음에 물어볼 만한 후속 질문 3개를 제안하세요.
+
+규칙:
+- 번호나 접두어 없이 질문만 작성
+- 한 줄에 하나씩 "-"로 시작
+- 현재 문제와 대화 맥락에 맞는 질문
+
+예시 형식:
+- 이 경우에 시간 복잡도는 어떻게 되나요
+- 다른 테스트 케이스에서도 동작할까요
+- 메모리 사용량을 줄이는 방법이 있을까요`;
+
 // Problem context to send
 export interface ProblemContext {
   platform: "baekjoon" | "programmers" | "swea";
@@ -233,9 +246,16 @@ ${problem.description.slice(0, 3000)}${codeSection}`;
 
               this.callbacks.onDone?.();
 
-              // Send suggestions if found
+              // Send suggestions if found, otherwise try fallback
               if (suggestions.length > 0) {
                 this.callbacks.onSuggestions?.(suggestions);
+              } else {
+                // Fallback: Fetch suggestions separately
+                this.fetchFallbackSuggestions().then((fallbackSuggestions) => {
+                  if (fallbackSuggestions.length > 0) {
+                    this.callbacks.onSuggestions?.(fallbackSuggestions);
+                  }
+                });
               }
               return;
             }
@@ -264,8 +284,16 @@ ${problem.description.slice(0, 3000)}${codeSection}`;
 
         this.callbacks.onDone?.();
 
+        // Send suggestions if found, otherwise try fallback
         if (suggestions.length > 0) {
           this.callbacks.onSuggestions?.(suggestions);
+        } else {
+          // Fallback: Fetch suggestions separately
+          this.fetchFallbackSuggestions().then((fallbackSuggestions) => {
+            if (fallbackSuggestions.length > 0) {
+              this.callbacks.onSuggestions?.(fallbackSuggestions);
+            }
+          });
         }
       } else {
         this.callbacks.onDone?.();
@@ -305,6 +333,56 @@ ${problem.description.slice(0, 3000)}${codeSection}`;
     const content = response.replace(/\[SUGGESTIONS\][\s\S]*$/i, "").trim();
 
     return { content, suggestions };
+  }
+
+  /**
+   * Fallback: Fetch suggestions when AI response doesn't include them
+   */
+  private async fetchFallbackSuggestions(): Promise<string[]> {
+    // Get recent conversation context (last user + assistant messages)
+    const recentHistory = this.conversationHistory.slice(-2);
+
+    if (recentHistory.length === 0) {
+      return [];
+    }
+
+    const messages: ChatMessage[] = [
+      { role: "system", content: SUGGESTION_FALLBACK_PROMPT },
+      ...recentHistory,
+      { role: "user", content: "후속 질문 3개를 제안해주세요." },
+    ];
+
+    try {
+      const response = await fetch(LLM_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: LLM_MODEL,
+          messages: messages,
+          max_tokens: 300, // Short response only
+          temperature: 0.8, // More variety in suggestions
+          stream: false, // No streaming needed
+        }),
+      });
+
+      if (!response.ok) {
+        log.warn("Fallback suggestions request failed:", response.status);
+        return [];
+      }
+
+      const json = await response.json();
+      const content = json.choices?.[0]?.message?.content || "";
+
+      // Parse lines starting with "-"
+      return content
+        .split("\n")
+        .map((line: string) => line.replace(/^[-*]\s*/, "").trim())
+        .filter((line: string) => line.length > 0)
+        .slice(0, 3);
+    } catch (error) {
+      log.warn("Fallback suggestions error:", error);
+      return [];
+    }
   }
 
   /**

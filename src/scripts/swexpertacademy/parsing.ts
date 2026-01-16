@@ -36,6 +36,17 @@ interface ParsedProblemData {
   code: string;
 }
 
+/**
+ * Extract numeric problem ID from text
+ * @param text - Raw text that may contain problem ID (e.g., "1234. 문제제목")
+ * @returns Extracted problem ID or empty string
+ */
+function extractProblemId(text: string | null | undefined): string {
+  if (!text) return "";
+  const match = text.match(/^\s*(\d+)/);
+  return match ? match[1] : "";
+}
+
 // Parse code result interface
 interface ParseCodeResult {
   problemId: string;
@@ -125,7 +136,8 @@ export async function parseCode(): Promise<ParseCodeResult | undefined> {
     log.error("parseCode: 문제번호 요소를 찾을 수 없습니다.");
     return;
   }
-  const problemId = problemIdEl.textContent?.replace(/\..*$/, "").trim() || "";
+  const problemId = extractProblemId(problemIdEl.textContent);
+  log.debug("parseCode: problemId:", problemId, "raw:", problemIdEl.textContent);
 
   const contestProbIdElements = document.querySelectorAll("#contestProbId");
   if (contestProbIdElements.length === 0) {
@@ -191,7 +203,8 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
     log.error("parseData: 문제번호 요소를 찾을 수 없습니다.");
     return;
   }
-  const problemId = problemIdElement.textContent?.split(".")[0].trim() || "";
+  const problemId = extractProblemId(problemIdElement.textContent);
+  log.debug("parseData: problemId:", problemId, "raw:", problemIdElement.textContent);
 
   // Contest problem ID
   const contestProbIdElements = document.querySelectorAll("#contestProbId");
@@ -250,7 +263,7 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
 
   // Get cached code from storage
   const data = await getProblemData(problemId);
-  log.debug("data", data);
+  log.debug("parseData: cached data for problemId:", problemId, "data:", data);
   if (isNull(data?.code)) {
     log.error("소스코드 데이터가 없습니다.");
     return;
