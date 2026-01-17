@@ -73,10 +73,14 @@ const HINT_STYLES = `
 
 .ssafy-hint-modal {
   position: fixed !important;
-  bottom: 150px !important;
+  /* Use left/top for easier resize calculations */
+  left: auto !important;
+  top: auto !important;
   right: 20px !important;
-  width: 450px !important;
-  height: 550px !important;
+  bottom: 150px !important;
+  /* width/height without !important to allow JS resizing */
+  width: 450px;
+  height: 550px;
   min-width: 350px !important;
   min-height: 400px !important;
   max-width: 90vw !important;
@@ -94,29 +98,90 @@ const HINT_STYLES = `
   display: flex !important;
 }
 
-.ssafy-hint-resize-handle {
+/* 8-direction resize handles */
+.ssafy-hint-resize {
   position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 20px !important;
-  height: 20px !important;
-  cursor: nwse-resize !important;
   z-index: 10 !important;
 }
 
-.ssafy-hint-resize-handle::before {
-  content: '' !important;
-  position: absolute !important;
-  top: 4px !important;
-  left: 4px !important;
-  width: 8px !important;
-  height: 8px !important;
-  border-left: 2px solid rgba(255, 255, 255, 0.6) !important;
-  border-top: 2px solid rgba(255, 255, 255, 0.6) !important;
+.ssafy-hint-resize-n {
+  top: 0 !important;
+  left: 12px !important;
+  right: 12px !important;
+  height: 6px !important;
+  cursor: ns-resize !important;
 }
 
-.ssafy-hint-resize-handle:hover::before {
-  border-color: rgba(255, 255, 255, 0.9) !important;
+.ssafy-hint-resize-s {
+  bottom: 0 !important;
+  left: 12px !important;
+  right: 12px !important;
+  height: 6px !important;
+  cursor: ns-resize !important;
+}
+
+.ssafy-hint-resize-w {
+  left: 0 !important;
+  top: 12px !important;
+  bottom: 12px !important;
+  width: 6px !important;
+  cursor: ew-resize !important;
+}
+
+.ssafy-hint-resize-e {
+  right: 0 !important;
+  top: 12px !important;
+  bottom: 12px !important;
+  width: 6px !important;
+  cursor: ew-resize !important;
+}
+
+.ssafy-hint-resize-nw {
+  top: 0 !important;
+  left: 0 !important;
+  width: 12px !important;
+  height: 12px !important;
+  cursor: nwse-resize !important;
+}
+
+.ssafy-hint-resize-ne {
+  top: 0 !important;
+  right: 0 !important;
+  width: 12px !important;
+  height: 12px !important;
+  cursor: nesw-resize !important;
+}
+
+.ssafy-hint-resize-sw {
+  bottom: 0 !important;
+  left: 0 !important;
+  width: 12px !important;
+  height: 12px !important;
+  cursor: nesw-resize !important;
+}
+
+.ssafy-hint-resize-se {
+  bottom: 0 !important;
+  right: 0 !important;
+  width: 12px !important;
+  height: 12px !important;
+  cursor: nwse-resize !important;
+}
+
+/* Visual indicator for SE corner */
+.ssafy-hint-resize-se::before {
+  content: '' !important;
+  position: absolute !important;
+  right: 4px !important;
+  bottom: 4px !important;
+  width: 8px !important;
+  height: 8px !important;
+  border-right: 2px solid rgba(156, 163, 175, 0.8) !important;
+  border-bottom: 2px solid rgba(156, 163, 175, 0.8) !important;
+}
+
+.ssafy-hint-resize-se:hover::before {
+  border-color: rgba(107, 114, 128, 1) !important;
 }
 
 .ssafy-hint-header {
@@ -456,7 +521,15 @@ export class HintUI {
     const modal = document.createElement("div");
     modal.className = "ssafy-hint-modal";
     modal.innerHTML = `
-      <div class="ssafy-hint-resize-handle"></div>
+      <!-- 8-direction resize handles -->
+      <div class="ssafy-hint-resize ssafy-hint-resize-n" data-direction="n"></div>
+      <div class="ssafy-hint-resize ssafy-hint-resize-s" data-direction="s"></div>
+      <div class="ssafy-hint-resize ssafy-hint-resize-w" data-direction="w"></div>
+      <div class="ssafy-hint-resize ssafy-hint-resize-e" data-direction="e"></div>
+      <div class="ssafy-hint-resize ssafy-hint-resize-nw" data-direction="nw"></div>
+      <div class="ssafy-hint-resize ssafy-hint-resize-ne" data-direction="ne"></div>
+      <div class="ssafy-hint-resize ssafy-hint-resize-sw" data-direction="sw"></div>
+      <div class="ssafy-hint-resize ssafy-hint-resize-se" data-direction="se"></div>
       <div class="ssafy-hint-header">
         <h3>AI 힌트</h3>
         <button class="ssafy-hint-close">${CLOSE_ICON}</button>
@@ -500,34 +573,97 @@ export class HintUI {
     });
     this.sendButton?.addEventListener("click", () => this.sendMessage());
 
-    // Resize handle events
-    this.initResizeHandle(modal);
+    // Initialize resize handles and restore saved size
+    this.initResizeHandles(modal);
+    this.restoreModalSize(modal);
   }
 
   /**
-   * Initialize resize handle for top-left corner resizing
+   * Get storage key for current platform
    */
-  private initResizeHandle(modal: HTMLElement): void {
-    const handle = modal.querySelector(".ssafy-hint-resize-handle");
-    if (!handle) return;
+  private getStorageKey(): string {
+    const platform = this.problemContext?.platform || "default";
+    return `ssafy-hint-modal-size-${platform}`;
+  }
+
+  /**
+   * Save modal size to localStorage
+   */
+  private saveModalSize(width: number, height: number): void {
+    try {
+      const key = this.getStorageKey();
+      localStorage.setItem(key, JSON.stringify({ width, height }));
+      log.debug(`Saved modal size for ${this.problemContext?.platform}: ${width}x${height}`);
+    } catch (e) {
+      log.warn("Failed to save modal size:", e);
+    }
+  }
+
+  /**
+   * Restore modal size from localStorage
+   */
+  private restoreModalSize(modal: HTMLElement): void {
+    try {
+      const key = this.getStorageKey();
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const { width, height } = JSON.parse(saved);
+        const minWidth = 350;
+        const minHeight = 400;
+        const maxWidth = window.innerWidth * 0.9;
+        const maxHeight = window.innerHeight * 0.8;
+
+        // Validate and apply saved size
+        const validWidth = Math.max(minWidth, Math.min(maxWidth, width));
+        const validHeight = Math.max(minHeight, Math.min(maxHeight, height));
+
+        modal.style.width = `${validWidth}px`;
+        modal.style.height = `${validHeight}px`;
+        log.debug(`Restored modal size for ${this.problemContext?.platform}: ${validWidth}x${validHeight}`);
+      }
+    } catch (e) {
+      log.warn("Failed to restore modal size:", e);
+    }
+  }
+
+  /**
+   * Initialize 8-direction resize handles
+   */
+  private initResizeHandles(modal: HTMLElement): void {
+    const handles = modal.querySelectorAll(".ssafy-hint-resize");
+    if (handles.length === 0) return;
 
     let isResizing = false;
+    let currentDirection = "";
     let startX = 0;
     let startY = 0;
     let startWidth = 0;
     let startHeight = 0;
-    let startRight = 0;
-    let startBottom = 0;
+    let startLeft = 0;
+    let startTop = 0;
 
     const onMouseDown = (e: Event) => {
       const mouseEvent = e as MouseEvent;
+      const target = mouseEvent.target as HTMLElement;
+      currentDirection = target.dataset.direction || "";
+
+      if (!currentDirection) return;
+
       isResizing = true;
       startX = mouseEvent.clientX;
       startY = mouseEvent.clientY;
-      startWidth = modal.offsetWidth;
-      startHeight = modal.offsetHeight;
-      startRight = parseInt(getComputedStyle(modal).right);
-      startBottom = parseInt(getComputedStyle(modal).bottom);
+
+      const rect = modal.getBoundingClientRect();
+      startWidth = rect.width;
+      startHeight = rect.height;
+      startLeft = rect.left;
+      startTop = rect.top;
+
+      // Convert to left/top positioning during resize
+      modal.style.right = "auto";
+      modal.style.bottom = "auto";
+      modal.style.left = `${startLeft}px`;
+      modal.style.top = `${startTop}px`;
 
       document.addEventListener("mousemove", onMouseMove);
       document.addEventListener("mouseup", onMouseUp);
@@ -537,34 +673,106 @@ export class HintUI {
     const onMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
 
-      const deltaX = startX - e.clientX;
-      const deltaY = startY - e.clientY;
+      const deltaX = e.clientX - startX;
+      const deltaY = e.clientY - startY;
 
-      // Calculate new dimensions
-      let newWidth = startWidth + deltaX;
-      let newHeight = startHeight + deltaY;
-
-      // Apply min/max constraints
+      // Constraints
       const minWidth = 350;
       const minHeight = 400;
       const maxWidth = window.innerWidth * 0.9;
       const maxHeight = window.innerHeight * 0.8;
 
-      newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
-      newHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
+      let newWidth = startWidth;
+      let newHeight = startHeight;
+      let newLeft = startLeft;
+      let newTop = startTop;
 
-      // Apply new dimensions
+      // Calculate based on direction
+      const dir = currentDirection;
+
+      // Width changes (e, w, ne, nw, se, sw)
+      if (dir.includes("e")) {
+        // Expanding right: width increases with positive deltaX
+        newWidth = startWidth + deltaX;
+      }
+      if (dir.includes("w")) {
+        // Expanding left: width increases with negative deltaX, left decreases
+        newWidth = startWidth - deltaX;
+        newLeft = startLeft + deltaX;
+      }
+
+      // Height changes (n, s, ne, nw, se, sw)
+      if (dir.includes("s")) {
+        // Expanding down: height increases with positive deltaY
+        newHeight = startHeight + deltaY;
+      }
+      if (dir.includes("n")) {
+        // Expanding up: height increases with negative deltaY, top decreases
+        newHeight = startHeight - deltaY;
+        newTop = startTop + deltaY;
+      }
+
+      // Apply constraints
+      if (newWidth < minWidth) {
+        if (dir.includes("w")) {
+          newLeft = startLeft + startWidth - minWidth;
+        }
+        newWidth = minWidth;
+      }
+      if (newWidth > maxWidth) {
+        if (dir.includes("w")) {
+          newLeft = startLeft + startWidth - maxWidth;
+        }
+        newWidth = maxWidth;
+      }
+      if (newHeight < minHeight) {
+        if (dir.includes("n")) {
+          newTop = startTop + startHeight - minHeight;
+        }
+        newHeight = minHeight;
+      }
+      if (newHeight > maxHeight) {
+        if (dir.includes("n")) {
+          newTop = startTop + startHeight - maxHeight;
+        }
+        newHeight = maxHeight;
+      }
+
+      // Prevent going off screen
+      if (newLeft < 0) {
+        newWidth = startWidth + startLeft;
+        newLeft = 0;
+      }
+      if (newTop < 0) {
+        newHeight = startHeight + startTop;
+        newTop = 0;
+      }
+
+      // Apply new dimensions and position
       modal.style.width = `${newWidth}px`;
       modal.style.height = `${newHeight}px`;
+      modal.style.left = `${newLeft}px`;
+      modal.style.top = `${newTop}px`;
     };
 
     const onMouseUp = () => {
+      if (isResizing) {
+        // Save the final size
+        this.saveModalSize(modal.offsetWidth, modal.offsetHeight);
+
+        // Keep using left/top positioning (don't revert to right/bottom)
+        // This prevents jumps after resize
+      }
+
       isResizing = false;
+      currentDirection = "";
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
     };
 
-    handle.addEventListener("mousedown", onMouseDown);
+    handles.forEach((handle) => {
+      handle.addEventListener("mousedown", onMouseDown);
+    });
   }
 
   /**
