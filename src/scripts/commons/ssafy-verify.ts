@@ -3,7 +3,9 @@
  * 회원가입 페이지에서 확장 프로그램 설치 여부를 확인하고 응답
  */
 
-const EXTENSION_VERSION = '3.3.0';
+// manifest.json에서 버전을 동적으로 로드
+const manifest = chrome.runtime.getManifest();
+const EXTENSION_VERSION = manifest.version;
 
 const EVENTS = {
   CHECK: 'SSAFY_TODAY_CHECK',
@@ -20,14 +22,17 @@ async function getStoredCredentials() {
       'platform_baekjoon_username',
       'platform_programmers_username',
       'platform_swea_nickname',
-      'baekjoonhub_username'  // GitHub username (기존 키)
+      'platform_gitlab_username',
+      'platform_github_username',
+      'baekjoonhub_username'  // GitHub username (기존 키, fallback)
     ]);
     // 프론트엔드가 기대하는 형식으로 변환
     return {
       baekjoon_username: result.platform_baekjoon_username || '',
       programmers_username: result.platform_programmers_username || '',
       swea_nickname: result.platform_swea_nickname || '',
-      github_username: result.baekjoonhub_username || '',
+      gitlab_username: result.platform_gitlab_username || '',
+      github_username: result.platform_github_username || result.baekjoonhub_username || '',
     };
   } catch {
     return {};

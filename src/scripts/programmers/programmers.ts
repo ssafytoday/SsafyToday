@@ -52,12 +52,18 @@ class ProgrammersHub extends PlatformHubBase {
     }
 
     // Method 5: 마이페이지 링크에서 추출
-    const myPageLink = document.querySelector('a[href*="/users/"]');
-    if (myPageLink) {
-      const href = myPageLink.getAttribute('href');
-      const match = href?.match(/\/users\/([^/]+)/);
+    // 단, 시스템 경로(challenge-activity 등)는 제외
+    const SYSTEM_PATHS = ['challenge-activity', 'edit', 'settings', 'notifications', 'dashboard'];
+    const myPageLinks = document.querySelectorAll('a[href*="/users/"]');
+    for (const link of myPageLinks) {
+      const href = link.getAttribute('href');
+      const match = href?.match(/\/users\/([^/?#]+)/);
       if (match?.[1]) {
-        return match[1];
+        const username = match[1];
+        // 시스템 경로가 아닌 경우에만 반환
+        if (!SYSTEM_PATHS.includes(username.toLowerCase())) {
+          return username;
+        }
       }
     }
 

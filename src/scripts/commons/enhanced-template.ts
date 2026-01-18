@@ -107,6 +107,23 @@ export default class EnhancedTemplateService {
   }
 
   /**
+   * Parse any template string with data.
+   * Generic utility method for parsing templates with text transforms.
+   *
+   * @param template - Template string with {{variable}} or {{function(variable)}} syntax
+   * @param data - Data object for template variables
+   * @returns Parsed string
+   */
+  static parseTemplate(template: string, data: Record<string, unknown>): string {
+    try {
+      return parseTemplateString(template, data, getTextTransforms() as unknown as SafeTextTransforms);
+    } catch (error) {
+      log.error("템플릿 파싱 중 오류가 발생했습니다:", error);
+      return template;
+    }
+  }
+
+  /**
    * Parse template string to generate directory path.
    * Uses new safe-template-parser API with allowedFunctions as third argument.
    *

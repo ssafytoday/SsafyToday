@@ -1,6 +1,6 @@
 {
   "name": "ssafytoday",
-  "version": "3.4.1",
+  "version": "3.5.0",
   "description": "SSAFY 교육생을 위한 코딩 풀이 자동 동기화 확장 프로그램",
   "type": "module",
   "main": "index.js",
@@ -53,6 +53,7 @@
     "vite": "^6.0.3"
   },
   "dependencies": {
+    "dayjs": "^1.11.19",
     "fflate": "^0.8.2",
     "highlight.js": "^11.11.1",
     "loglevel": "^1.9.2",

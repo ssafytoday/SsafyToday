@@ -85,7 +85,7 @@ export async function getToken(): Promise<string | undefined> {
 }
 
 export async function getGithubUsername(): Promise<string | undefined> {
-  return getObjectFromLocalStorage<string>(STORAGE_KEYS.USERNAME);
+  return getObjectFromLocalStorage<string>(STORAGE_KEYS.PLATFORM_GITHUB_USERNAME);
 }
 
 export async function getStats(): Promise<Stats> {

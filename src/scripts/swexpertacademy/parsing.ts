@@ -2,7 +2,13 @@
  * SWEA platform parsing functions
  * Handles problem description and submission code parsing
  */
-import { isNull, convertSingleCharToDoubleChar } from "@/commons/util";
+import { isNull } from "@/commons/util";
+import EnhancedTemplateService from "@/commons/enhanced-template";
+import {
+  DEFAULT_DIR_TEMPLATES,
+  DEFAULT_MESSAGE_TEMPLATES,
+  DEFAULT_FILENAME_TEMPLATE,
+} from "@/constants/templates";
 import { getProblemData, updateProblemData } from "@/swexpertacademy/storage";
 import { languages } from "@/swexpertacademy/variables";
 import { getNickname } from "@/swexpertacademy/util";
@@ -88,8 +94,18 @@ export async function makeData(origin: SWEAProblemOrigin): Promise<ParsedProblem
       ? language.substring(0, 1) + language.substring(1).toLowerCase()
       : language;
 
-  // Build base directory path
-  const baseDirPath = `SWEA/${level}/${problemId}. ${convertSingleCharToDoubleChar(title)}`;
+  // Prepare template data
+  const templateData = {
+    problemId,
+    title,
+    level,
+    memory,
+    runtime,
+    languageExtension,
+  };
+
+  // Build base directory path using template
+  const baseDirPath = EnhancedTemplateService.parseTemplate(DEFAULT_DIR_TEMPLATES.swea, templateData);
 
   // Get directory from template
   const directory = await getDirNameByTemplate(baseDirPath, lang, {
@@ -104,8 +120,9 @@ export async function makeData(origin: SWEAProblemOrigin): Promise<ParsedProblem
     link,
   });
 
-  const message = `[${level}] Title: ${title}, Time: ${runtime}, Memory: ${memory} -SsafyToday`;
-  const fileName = `${convertSingleCharToDoubleChar(title)}.${languageExtension}`;
+  // Build commit message and filename using templates
+  const message = EnhancedTemplateService.parseTemplate(DEFAULT_MESSAGE_TEMPLATES.swea, templateData);
+  const fileName = EnhancedTemplateService.parseTemplate(DEFAULT_FILENAME_TEMPLATE, templateData);
   const dateInfo = submissionTime;
 
   const readme = new ReadmeBuilder()

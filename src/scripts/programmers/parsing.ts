@@ -3,7 +3,13 @@
  * Handles problem description and submission code parsing
  */
 import { convertSingleCharToDoubleChar } from "@/commons/util";
-import { getDateString } from "@/commons/ui-util";
+import EnhancedTemplateService from "@/commons/enhanced-template";
+import {
+  DEFAULT_DIR_TEMPLATES,
+  DEFAULT_MESSAGE_TEMPLATES,
+  DEFAULT_FILENAME_TEMPLATE,
+} from "@/constants/templates";
+import { nowISO, toKoreanDateString } from "@/commons/date-util";
 import { getDirNameByTemplate } from "@/commons/storage";
 import log from "@/commons/logger";
 import { ReadmeBuilder } from "@/commons/readme-builder";
@@ -55,8 +61,21 @@ export async function makeData(origin: ProgrammersProblemOrigin): Promise<Parsed
     link,
   } = origin;
 
-  // Build base directory path
-  const baseDirPath = `프로그래머스/${level}/${problemId}. ${convertSingleCharToDoubleChar(title)}`;
+  // Convert level to display format (e.g., "1" -> "level 1", "lv1" -> "lv1")
+  const levelWithLv = `${level}`.includes("lv") ? level : `lv${level}`.replace("lv", "level ");
+
+  // Prepare template data
+  const templateData = {
+    problemId,
+    title,
+    level,
+    memory,
+    runtime,
+    languageExtension,
+  };
+
+  // Build base directory path using template
+  const baseDirPath = EnhancedTemplateService.parseTemplate(DEFAULT_DIR_TEMPLATES.programmers, templateData);
 
   // Get directory from template
   const directory = await getDirNameByTemplate(baseDirPath, language, {
@@ -66,17 +85,21 @@ export async function makeData(origin: ProgrammersProblemOrigin): Promise<Parsed
     division,
     memory,
     runtime,
-    submissionTime: getDateString(new Date(Date.now())),
+    submissionTime: nowISO(),
     language,
     problemDescription,
     resultMessage,
     link,
   });
 
-  const levelWithLv = `${level}`.includes("lv") ? level : `lv${level}`.replace("lv", "level ");
-  const message = `[${levelWithLv}] Title: ${title}, Time: ${runtime}, Memory: ${memory} -SsafyToday`;
-  const fileName = `${convertSingleCharToDoubleChar(title)}.${languageExtension}`;
-  const dateInfo = getDateString(new Date(Date.now()));
+  // Build commit message and filename using templates
+  // Note: message uses levelWithLv for display purposes
+  const message = EnhancedTemplateService.parseTemplate(DEFAULT_MESSAGE_TEMPLATES.programmers, {
+    ...templateData,
+    level: levelWithLv,
+  });
+  const fileName = EnhancedTemplateService.parseTemplate(DEFAULT_FILENAME_TEMPLATE, templateData);
+  const dateInfo = toKoreanDateString();
 
   const readme = new ReadmeBuilder()
     .addTitle(levelWithLv, title, problemId)

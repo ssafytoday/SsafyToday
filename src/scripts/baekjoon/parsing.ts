@@ -8,12 +8,18 @@ import {
   preProcessEmptyObj,
   parseNumberFromString,
   asyncPool,
-  convertSingleCharToDoubleChar,
   unescapeHtml,
   filter,
 } from "@/commons/util";
+import EnhancedTemplateService from "@/commons/enhanced-template";
+import {
+  DEFAULT_DIR_TEMPLATES,
+  DEFAULT_MESSAGE_TEMPLATES,
+  DEFAULT_FILENAME_TEMPLATE,
+} from "@/constants/templates";
 import log from "@/commons/logger";
-import { getDateString, convertImageTagToAbsoluteURL } from "@/commons/ui-util";
+import { convertImageTagToAbsoluteURL } from "@/commons/ui-util";
+import { toKoreanDateString } from "@/commons/date-util";
 import { ReadmeBuilder } from "@/commons/readme-builder";
 import { httpClient } from "@/commons/http-client";
 import {
@@ -276,9 +282,20 @@ export async function makeDetailMessageAndReadme(data: Record<string, unknown>):
 
   const score = parseNumberFromString(result || "");
   const processedLanguage = langVersionRemove(language, null);
+  const languageExtension = getLanguageExtension(language);
 
-  // Build base directory path
-  const baseDirPath = `백준/${level.replace(/ .*/, "")}/${problemId}. ${convertSingleCharToDoubleChar(title)}`;
+  // Prepare template data
+  const templateData = {
+    problemId,
+    title,
+    level,
+    memory,
+    runtime,
+    languageExtension,
+  };
+
+  // Build base directory path using template
+  const baseDirPath = EnhancedTemplateService.parseTemplate(DEFAULT_DIR_TEMPLATES.baekjoon, templateData);
 
   // Get directory from template
   let directory: string;
@@ -301,12 +318,15 @@ export async function makeDetailMessageAndReadme(data: Record<string, unknown>):
     directory = baseDirPath;
   }
 
-  // Build commit message
-  const message = `[${level}] Title: ${title}, Time: ${runtime} ms, Memory: ${memory} KB${Number.isNaN(score) ? "" : `, Score: ${score} point`} -SsafyToday`;
+  // Build commit message using template
+  const messageTemplate = Number.isNaN(score)
+    ? DEFAULT_MESSAGE_TEMPLATES.baekjoon
+    : DEFAULT_MESSAGE_TEMPLATES.baekjoonWithScore;
+  const message = EnhancedTemplateService.parseTemplate(messageTemplate, { ...templateData, score });
 
   const category = problemTags.join(", ");
-  const fileName = `${convertSingleCharToDoubleChar(title)}.${getLanguageExtension(language)}`;
-  const dateInfo = submissionTime ?? getDateString(new Date(Date.now()));
+  const fileName = EnhancedTemplateService.parseTemplate(DEFAULT_FILENAME_TEMPLATE, templateData);
+  const dateInfo = submissionTime ?? toKoreanDateString();
 
   // Build readme content using ReadmeBuilder
   const readme = new ReadmeBuilder()

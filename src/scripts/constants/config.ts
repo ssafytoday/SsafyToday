@@ -69,17 +69,8 @@ export const GITHUB_API: GitHubApiConfig = {
   MAX_TREE_SIZE: 1000, // GitHub API tree size limit
 } as const;
 
-// Storage keys
-export const STORAGE_KEYS = {
-  STATS: "stats",
-  TOKEN: "bjhGitToken",
-  HOOK: "bjhHook",
-  USERNAME: "bjhUsername",
-  MODE: "bjhMode",
-  BRANCH: "bjhBranch",
-  LOG_LEVEL: "bjhLogLevel",
-  LANGUAGE_MAP: "bjhLanguageMap",
-} as const;
+// NOTE: STORAGE_KEYS는 registry.ts에서 관리됩니다
+// import { STORAGE_KEYS } from '@/constants/registry';
 
 // Log levels
 export const LOG_LEVELS: LogLevels = {

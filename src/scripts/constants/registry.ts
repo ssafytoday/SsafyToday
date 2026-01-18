@@ -21,6 +21,8 @@ export const STORAGE_KEYS = {
   PLATFORM_BAEKJOON_USERNAME: "platform_baekjoon_username",
   PLATFORM_PROGRAMMERS_USERNAME: "platform_programmers_username",
   PLATFORM_SWEA_NICKNAME: "platform_swea_nickname",
+  PLATFORM_GITLAB_USERNAME: "platform_gitlab_username",
+  PLATFORM_GITHUB_USERNAME: "platform_github_username",
 } as const;
 
 export type StorageKey = keyof typeof STORAGE_KEYS;

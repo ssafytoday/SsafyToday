@@ -5,6 +5,7 @@
 import { GitHub } from "./github";
 import { getToken, getHook, getStats, saveStats, updateObjectDatafromPath, getGithubUsername } from "./storage";
 import { isNull, isEmpty, preProcessEmptyObj } from "./util";
+import { toISOString } from "./date-util";
 import log from "@/commons/logger";
 import { SsafyAPIService, type SubmissionData } from "./ssafy-api";
 import type { ProblemData, BaseProblemInfo } from "@/types/problem";
@@ -83,7 +84,7 @@ export default class UploadService {
               code: code,
               runtime: problemInfo?.runtime || "",
               memory: problemInfo?.memory || "",
-              submissionTime: problemInfo?.submissionTime || new Date().toISOString(),
+              submissionTime: toISOString(problemInfo?.submissionTime),
               tags: (Array.isArray(problemInfo?.tags) ? problemInfo.tags : []) as string[],
               link: (typeof problemInfo?.link === "string" ? problemInfo.link : undefined) as string | undefined,
             };
