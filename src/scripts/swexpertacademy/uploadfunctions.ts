@@ -8,6 +8,8 @@ import type { BaseProblemInfo } from "@/types/problem";
 
 // SWEA-specific problem info interface
 interface SWEAProblemInfo extends BaseProblemInfo {
+  length?: string;
+  link?: string;
   result_message?: string;
   problem_description?: string;
   problem_input?: string;
@@ -18,9 +20,8 @@ interface SWEAProblemInfo extends BaseProblemInfo {
  * Problem info mapper for SW Expert Academy platform
  * Maps raw problem data to standardized ProblemInfo format
  */
-const swexpertacademyProblemInfoMapper = (
-  problemData: Partial<SWEAProblemInfo>
-): SWEAProblemInfo => ({
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const swexpertacademyProblemInfoMapper = (problemData: any): SWEAProblemInfo => ({
   problemId: problemData.problemId || "",
   title: problemData.title || "",
   level: problemData.level || "",
@@ -28,6 +29,8 @@ const swexpertacademyProblemInfoMapper = (
   memory: problemData.memory || "",
   runtime: problemData.runtime || "",
   submissionTime: problemData.submissionTime || "",
+  length: problemData.length || "",
+  link: problemData.link || "",
   problem_description: problemData.problem_description || "",
   problem_input: problemData.problem_input || "",
   problem_output: problemData.problem_output || "",

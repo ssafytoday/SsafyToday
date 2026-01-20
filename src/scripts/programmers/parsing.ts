@@ -38,6 +38,17 @@ interface ParsedProblemData {
   fileName: string;
   readme: string;
   code: string;
+  // Fields needed for API submission
+  title: string;
+  level: string;
+  language: string;
+  memory: string;
+  runtime: string;
+  submissionTime: string;
+  division: string;
+  problem_description: string;
+  result_message: string;
+  link: string;
 }
 
 /**
@@ -119,6 +130,17 @@ export async function makeData(origin: ProgrammersProblemOrigin): Promise<Parsed
     fileName,
     readme,
     code,
+    // Fields needed for API submission
+    title,
+    level,
+    language,
+    memory,
+    runtime,
+    submissionTime: nowISO(),
+    division,
+    problem_description: problemDescription,
+    result_message: resultMessage,
+    link,
   };
 }
 

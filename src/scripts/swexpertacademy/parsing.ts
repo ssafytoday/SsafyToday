@@ -40,6 +40,15 @@ interface ParsedProblemData {
   fileName: string;
   readme: string;
   code: string;
+  // Fields needed for API submission
+  title: string;
+  level: string;
+  language: string;
+  memory: string;
+  runtime: string;
+  submissionTime: string;
+  length: string;
+  link: string;
 }
 
 /**
@@ -140,6 +149,15 @@ export async function makeData(origin: SWEAProblemOrigin): Promise<ParsedProblem
     fileName,
     readme,
     code,
+    // Fields needed for API submission
+    title,
+    level,
+    language: lang,
+    memory,
+    runtime,
+    submissionTime,
+    length,
+    link,
   };
 }
 

@@ -85,7 +85,9 @@ export async function getToken(): Promise<string | undefined> {
 }
 
 export async function getGithubUsername(): Promise<string | undefined> {
-  return getObjectFromLocalStorage<string>(STORAGE_KEYS.PLATFORM_GITHUB_USERNAME);
+  // GitHub OAuth stores username in USERNAME key (background.ts)
+  // PLATFORM_GITHUB_USERNAME is for separate platform registration
+  return getObjectFromLocalStorage<string>(STORAGE_KEYS.USERNAME);
 }
 
 export async function getStats(): Promise<Stats> {

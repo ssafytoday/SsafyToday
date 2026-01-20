@@ -9,8 +9,10 @@ import type { ProblemData, ProblemInfo } from "@/types/problem";
 /**
  * Problem info mapper for Baekjoon platform
  * Maps raw problem data to standardized ProblemInfo format
+ * Supports both camelCase (from parsing) and snake_case inputs
  */
-const baekjoonProblemInfoMapper = (problemData: Partial<ProblemInfo>): ProblemInfo => ({
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const baekjoonProblemInfoMapper = (problemData: any): ProblemInfo => ({
   problemId: problemData.problemId || "",
   title: problemData.title || "",
   level: problemData.level || "",
@@ -18,10 +20,12 @@ const baekjoonProblemInfoMapper = (problemData: Partial<ProblemInfo>): ProblemIn
   memory: problemData.memory || "",
   runtime: problemData.runtime || "",
   submissionTime: problemData.submissionTime || "",
-  problem_tags: problemData.problem_tags || [],
-  problem_description: problemData.problem_description || "",
-  problem_input: problemData.problem_input || "",
-  problem_output: problemData.problem_output || "",
+  // Support both camelCase (from parsing.ts) and snake_case
+  problem_tags: problemData.problemTags || problemData.problem_tags || [],
+  problem_description: problemData.problemDescription || problemData.problem_description || "",
+  problem_input: problemData.problemInput || problemData.problem_input || "",
+  problem_output: problemData.problemOutput || problemData.problem_output || "",
+  link: `https://www.acmicpc.net/problem/${problemData.problemId || ""}`,
 });
 
 /**

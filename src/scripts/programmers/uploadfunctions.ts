@@ -11,15 +11,15 @@ interface ProgrammersProblemInfo extends BaseProblemInfo {
   division?: string;
   result_message?: string;
   problem_description?: string;
+  link?: string;
 }
 
 /**
  * Problem info mapper for Programmers platform
  * Maps raw problem data to standardized ProblemInfo format
  */
-const programmersProblemInfoMapper = (
-  problemData: Partial<ProgrammersProblemInfo>
-): ProgrammersProblemInfo => ({
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const programmersProblemInfoMapper = (problemData: any): ProgrammersProblemInfo => ({
   problemId: problemData.problemId || "",
   title: problemData.title || "",
   level: problemData.level || "",
@@ -30,6 +30,7 @@ const programmersProblemInfoMapper = (
   division: problemData.division || "",
   problem_description: problemData.problem_description || "",
   result_message: problemData.result_message || "",
+  link: problemData.link || "",
 });
 
 /**
