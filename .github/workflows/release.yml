@@ -35,3 +35,42 @@ jobs:
           files: packages/${{ env.RELEASE_PACKAGE_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- 크롬 웹스토어 업로드 (시크릿 3개가 모두 설정된 경우에만 실행) ---
+      # 미설정 시 이 스텝은 조용히 건너뛰고 위의 GitHub Release는 정상 생성된다.
+      # 필요 시크릿: CHROME_CLIENT_ID / CHROME_CLIENT_SECRET / CHROME_REFRESH_TOKEN
+      # 발급 방법은 ../../CLAUDE.md "크롬 웹스토어 자동 업로드" 참조.
+      - name: Check Chrome Web Store secrets
+        id: cws
+        env:
+          CID: ${{ secrets.CHROME_CLIENT_ID }}
+          CSECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          RTOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          if [ -n "$CID" ] && [ -n "$CSECRET" ] && [ -n "$RTOKEN" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Chrome Web Store 시크릿 미설정 — 스토어 업로드를 건너뜁니다. GitHub Release만 생성됨."
+          fi
+
+      # 기본 동작은 업로드(초안)까지만 — 스토어 게시는 대시보드에서 수동 클릭.
+      # 저장소 변수 CHROME_AUTO_PUBLISH=true 를 설정하면 업로드 후 자동 게시(검수 제출)까지 수행.
+      - name: Upload to Chrome Web Store
+        if: steps.cws.outputs.ready == 'true'
+        env:
+          EXTENSION_ID: jggahimpefpcecjhbhhhlalhbmpkbghm
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          AUTO_PUBLISH: ${{ vars.CHROME_AUTO_PUBLISH }}
+        run: |
+          FLAGS=""
+          if [ "$AUTO_PUBLISH" = "true" ]; then
+            FLAGS="--auto-publish"
+            echo "auto-publish 활성 — 업로드 후 스토어 검수 제출까지 진행합니다."
+          else
+            echo "업로드(초안)만 진행 — 게시는 웹스토어 대시보드에서 수동 클릭. (자동 게시 원하면 저장소 변수 CHROME_AUTO_PUBLISH=true)"
+          fi
+          npx --yes chrome-webstore-upload-cli@3 upload \
+            --source "packages/${{ env.RELEASE_PACKAGE_NAME }}" $FLAGS

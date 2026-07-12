@@ -59,24 +59,45 @@ npm run package   # build + build.mjs → packages/SsafyToday-v{version}.zip
 | 워크플로 | 트리거 | 동작 |
 |----------|--------|------|
 | `pull-request.yml` | PR | `npm run build` 빌드 체크만 |
-| `release.yml` | **`v*` 태그 푸시** | `npm run package` → **GitHub Release 생성 + zip 첨부**(`softprops/action-gh-release`) |
+| `release.yml` | **`v*` 태그 푸시** | `npm run package` → GitHub Release 생성 + zip 첨부 → **크롬 웹스토어 업로드**(시크릿 설정 시) |
 
-- **`release.yml`은 크롬 웹스토어에 자동 업로드하지 않는다.** GitHub Release에 zip을
-  올리는 데서 끝나고, **스토어 업로드는 사람이 수동으로** 대시보드에 올린다.
-  (웹스토어 자동화 스텝·시크릿 없음.)
 - zip 파일명은 **태그가 아니라 `package.json` version**에서 나온다(`build.mjs:25-26`).
   → 태그 전에 `package.json` + `src/manifest.json` 버전을 **함께** 올려야 하고 태그와 일치시킨다.
+- 웹스토어 업로드 스텝은 **시크릿 3개가 모두 설정된 경우에만** 실행된다(`release.yml`의 gate).
+  미설정 시 조용히 건너뛰고 GitHub Release는 정상 생성 → 기존 수동 배포 흐름과 호환.
 
 ### 배포 절차 (이 수정을 사용자에게 반영)
 
 1. `package.json` + `src/manifest.json` 버전 범프 (예: 3.5.3 → 3.5.4, 둘 다).
-2. `npm run package` → `packages/SsafyToday-v3.5.4.zip` (또는 커밋 후 `v3.5.4` 태그 푸시 →
-   Action이 Release로 만들어 줌).
-3. 그 zip을 **크롬 웹스토어 개발자 대시보드에 수동 업로드** → 검수(수 시간~수일) →
-   사용자 자동 업데이트. (같은 버전 재업로드는 스토어가 거부하므로 1의 범프 필수.)
+2. 커밋 후 `v3.5.4` 태그 푸시 → `release.yml`이 zip 빌드 + GitHub Release + 웹스토어 업로드.
+   (로컬 확인은 `npm run package` → `packages/SsafyToday-v3.5.4.zip`.)
+3. 검수(수 시간~수일) → 사용자 자동 업데이트. 같은 버전 재업로드는 스토어가 거부하므로 1 필수.
 
-> 웹스토어 업로드까지 완전 자동화하려면 `release.yml`에 `chrome-webstore-upload-cli`
-> 스텝 + 스토어 시크릿(client id/secret/refresh token)을 추가하면 된다 (현재 미구성).
+### 크롬 웹스토어 자동 업로드 (`release.yml` 시크릿)
+
+업로드 스텝은 아래 **저장소 시크릿 3개**를 쓴다 (GitHub → Settings → Secrets and variables → Actions):
+
+| 시크릿 | 내용 |
+|--------|------|
+| `CHROME_CLIENT_ID` | Google Cloud OAuth 2.0 클라이언트 ID |
+| `CHROME_CLIENT_SECRET` | 그 클라이언트 시크릿 |
+| `CHROME_REFRESH_TOKEN` | 스토어 아이템 소유 계정으로 `chromewebstore` 스코프 승인해 발급한 refresh token |
+
+- **저장소 변수(옵션)** `CHROME_AUTO_PUBLISH=true` → 업로드 후 **자동 게시(검수 제출)**까지.
+  미설정(기본): 업로드(초안)만 하고 게시는 대시보드에서 수동 클릭.
+- extension id는 워크플로에 하드코딩(`jggahimpefpcecjhbhhhlalhbmpkbghm`, 공개값).
+- 업로드는 표준 CLI `chrome-webstore-upload-cli@3`(env: `EXTENSION_ID`/`CLIENT_ID`/`CLIENT_SECRET`/`REFRESH_TOKEN`)로 수행.
+
+**자격증명 발급 (한 번만):**
+1. [Google Cloud Console](https://console.cloud.google.com) → 프로젝트 생성/선택 → **Chrome Web Store API** 사용 설정.
+2. OAuth 동의 화면 구성(External, 본인을 테스트 사용자로 추가).
+3. **사용자 인증 정보 → OAuth 클라이언트 ID 만들기** → 유형 **데스크톱 앱** → `client_id` + `client_secret` 확보.
+4. refresh token 발급: 위 client로 스코프 `https://www.googleapis.com/auth/chromewebstore`를
+   **스토어 아이템 소유 Google 계정**으로 승인 → refresh token 획득
+   (loopback OAuth 플로우 또는 `chrome-webstore-upload` 문서의 키 발급 가이드 사용).
+5. 위 3개 값을 GitHub 저장소 시크릿으로 등록.
+
+> 비밀번호 입력·OAuth 동의 승인·시크릿 값 입력은 계정 소유자(사람)만 수행한다 — 자동화 불가.
 
 ## 구조 (`packages/`는 모노레포 아님 — build.mjs 출력 디렉토리)
 
