@@ -90,6 +90,24 @@ export class CacheRepository<T> {
   }
 
   /**
+   * Immediately save without debouncing
+   * Use this before page navigation to ensure data is persisted
+   */
+  async flush(): Promise<void> {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    if (this.stats) {
+      const clone = (this.stats as Record<string, CacheStorage<T>>)[this.storageKey];
+      log.debug(`Flushing cache [${this.storageKey}]...`, clone);
+      await this.forceLoad();
+      (this.stats as Record<string, CacheStorage<T>>)[this.storageKey] = clone;
+      await saveStats(this.stats!);
+    }
+  }
+
+  /**
    * Check if an entry is expired
    */
   private isExpired(entry: CacheEntry<T>): boolean {

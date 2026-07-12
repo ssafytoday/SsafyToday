@@ -44,6 +44,8 @@ class BaekjoonHub extends PlatformHubBase {
     super({
       platformName: PLATFORMS.BAEKJOON,
       loaderInterval: TIMEOUTS.LOADER_INTERVAL,
+      // API 제출을 위해 enable 체크를 건너뜀 (비활성화 상태에서도 동작)
+      skipEnableCheck: true,
     });
 
     this.username = findUsername();
@@ -53,8 +55,7 @@ class BaekjoonHub extends PlatformHubBase {
    * Initialize the SsafyToday Baekjoon extension
    */
   async init(): Promise<boolean> {
-    const isEnabled = await super.init();
-    if (!isEnabled) return false;
+    log.info(`Initializing ${this.config.platformName} hub`);
 
     // Retry finding username with exponential backoff
     const foundUsername = await this.retryFindUsername();
@@ -71,17 +72,24 @@ class BaekjoonHub extends PlatformHubBase {
       requiredParams.every((key) => this.currentUrl.includes(key))
     );
 
+    // 제출 모니터링은 활성화 여부와 관계없이 동작
     if (requiredParams.every((key) => this.currentUrl.includes(key))) {
       log.debug("SsafyToday Debug - Starting submission monitoring");
       this.startSubmissionMonitoring();
     } else if (/\.net\/problem\/\d+/.test(this.currentUrl)) {
       log.debug("SsafyToday Debug - Parsing problem description");
       parseProblemDescription();
-      // Initialize hint UI on problem page
-      this.initHintUI();
+      // Hint UI는 enable 상태일 때만 활성화
+      const isEnabled = await checkEnable();
+      if (isEnabled) {
+        this.initHintUI();
+      }
     } else if (/\.net\/submit\/\d+/.test(this.currentUrl)) {
-      // Initialize hint UI on submit page (with code access)
-      this.initHintUI();
+      // Hint UI는 enable 상태일 때만 활성화
+      const isEnabled = await checkEnable();
+      if (isEnabled) {
+        this.initHintUI();
+      }
     } else {
       log.debug("SsafyToday Debug - No matching URL pattern");
     }
@@ -301,14 +309,20 @@ class BaekjoonHub extends PlatformHubBase {
         }
 
         log.debug("SsafyToday Debug - Upload data prepared:", bojData);
-        await this.beginUpload(bojData.data as UploadData, uploadOneSolveProblemOnGit, markUploadedCSS);
+        // Use smartUpload for automatic routing (GitHub or ssafy.today direct)
+        await this.smartUpload(
+          bojData.data as UploadData,
+          uploadOneSolveProblemOnGit,
+          markUploadedCSS,
+          this.username || ""
+        );
       } catch (error) {
         log.error("SsafyToday Debug - Error during upload process:", error);
       }
     };
 
-    // Setup submission monitoring
-    this.setupSubmissionMonitoring(checker, onSuccess);
+    // Setup submission monitoring (skipEnableCheck: true로 비활성화 상태에서도 동작)
+    this.setupSubmissionMonitoring(checker, onSuccess, { skipEnableCheck: true });
   }
 
   /**

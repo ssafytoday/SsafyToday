@@ -3,7 +3,7 @@
  * Provides common functionality for submission monitoring and upload handling
  */
 import { isNull, isEmpty, calculateBlobSHA, getVersion } from "@/commons/util";
-import { getStats, getHook, saveStats, updateLocalStorageStats, getStatsSHAfromPath } from "@/commons/storage";
+import { getStats, getHook, getToken, saveStats, updateLocalStorageStats, getStatsSHAfromPath } from "@/commons/storage";
 import { Toast } from "@/commons/toast";
 import { checkEnable } from "@/commons/enable";
 import { LoaderFactory, LoaderService } from "@/commons/loader-service";
@@ -25,6 +25,12 @@ interface PlatformHubConfig {
     SUCCESS: string;
     ACCEPTED?: string;
   };
+  /**
+   * Skip enable check for API submission
+   * When true, submission monitoring and upload will work even when extension is disabled
+   * Useful for platforms that want to submit to ssafy.today API regardless of GitHub integration status
+   */
+  skipEnableCheck?: boolean;
 }
 
 // Upload data interface
@@ -32,6 +38,7 @@ export interface UploadData {
   directory: string;
   fileName: string;
   code: string;
+  platformUsername?: string;  // 플랫폼별 사용자명 (백준 ID, 프로그래머스 닉네임, SWEA 닉네임)
   [key: string]: unknown;
 }
 
@@ -65,6 +72,12 @@ export default class PlatformHubBase {
    */
   async init(): Promise<boolean> {
     log.info(`Initializing ${this.config.platformName} hub`);
+
+    // skipEnableCheck가 true면 enable 체크를 건너뜀 (API 제출 전용 모드)
+    if (this.config.skipEnableCheck) {
+      log.info(`${this.config.platformName} hub running in API-only mode (skipEnableCheck=true)`);
+      return true;
+    }
 
     // Check if extension is enabled globally
     const enabled = await checkEnable();
@@ -106,10 +119,16 @@ export default class PlatformHubBase {
    * Generic submission monitoring setup using LoaderService
    * @param checker - Checker function or SubmissionChecker instance
    * @param onSuccess - Success callback
+   * @param options - Additional options (e.g., skipEnableCheck for API-only submission)
    */
-  setupSubmissionMonitoring(checker: CheckCondition, onSuccess: SuccessCallback): void {
+  setupSubmissionMonitoring(
+    checker: CheckCondition,
+    onSuccess: SuccessCallback,
+    options: { skipEnableCheck?: boolean } = {}
+  ): void {
     const loader = LoaderFactory.create(this.config.platformName || "unknown", {
       interval: this.config.loaderInterval,
+      skipEnableCheck: options.skipEnableCheck,
     });
     loader.start(checker, onSuccess);
     this.loaderService = loader;
@@ -276,6 +295,7 @@ export default class PlatformHubBase {
         const enhancedData = {
           ...problemData,
           platform: platformName,
+          platformUsername: problemData.platformUsername,  // 플랫폼별 사용자명 전달
           problemInfo: problemInfoMapper
             ? problemInfoMapper(problemData as unknown as Partial<T>)
             : problemData.problemInfo,
@@ -289,6 +309,7 @@ export default class PlatformHubBase {
             directory: string;
             fileName: string;
             message: string;
+            platformUsername?: string;
           },
           callback
         );
@@ -324,5 +345,110 @@ export default class PlatformHubBase {
       }
     }
     throw new Error(`${operationName} failed after all retries`);
+  }
+
+  /**
+   * Check if GitHub authentication is available
+   * @returns True if user has GitHub OAuth token and hook configured
+   */
+  async hasGitHubAuth(): Promise<boolean> {
+    const [token, hook] = await Promise.all([getToken(), getHook()]);
+    return !isNull(token) && !isNull(hook) && token !== "" && hook !== "";
+  }
+
+  /**
+   * Send submission to ssafy.today only (without GitHub upload)
+   * Used when user has no GitHub authentication
+   *
+   * @param data - Parsed problem data
+   * @param platformUsername - Platform-specific username (백준 ID, 프로그래머스 닉네임, SWEA 닉네임)
+   */
+  async sendToSsafyTodayOnly(
+    data: UploadData,
+    platformUsername: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      log.debug(`${this.config.platformName} - Sending to ssafy.today only (no GitHub auth)`);
+
+      if (isEmpty(data)) {
+        log.debug(`No data to send for ${this.config.platformName}`);
+        return { success: false, error: "No data to send" };
+      }
+
+      if (!platformUsername) {
+        log.warn(`${this.config.platformName} - No platform username available`);
+        Toast.raiseToast(`${this.config.platformName} 사용자명을 찾을 수 없습니다.`);
+        return { success: false, error: "Platform username not found" };
+      }
+
+      // Convert UploadData to UploadProblemData format
+      // problemInfo가 없으면 data에서 직접 필드 추출 (parseData가 flat 구조로 반환하는 경우)
+      const problemData = {
+        code: data.code,
+        readme: (data.readme as string) || "",
+        directory: data.directory,
+        fileName: data.fileName,
+        message: (data.message as string) || "",
+        platform: this.config.platformName,
+        problemInfo: (data.problemInfo as BaseProblemInfo | undefined) || {
+          problemId: data.problemId as string,
+          title: data.title as string,
+          level: data.level as string,
+          language: data.language as string,
+          runtime: data.runtime as string,
+          memory: data.memory as string,
+          submissionTime: data.submissionTime as string,
+          link: data.link as string,
+          length: data.length as string,
+        },
+      };
+
+      const result = await UploadService.sendToSsafyTodayDirect(problemData, platformUsername);
+
+      if (result.success) {
+        Toast.success(`ssafy.today에 ${this.config.platformName} 제출이 기록되었습니다!`, 5000);
+      } else {
+        Toast.raiseToast(`ssafy.today 기록 실패: ${result.error || "Unknown error"}`);
+      }
+
+      return result;
+    } catch (error) {
+      log.error(`Error sending to ssafy.today for ${this.config.platformName}:`, error);
+      Toast.raiseToast(`ssafy.today 전송 중 오류가 발생했습니다.`);
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * Smart upload - routes to GitHub or ssafy.today based on authentication status
+   *
+   * @param data - Parsed problem data
+   * @param uploadFunction - Platform-specific upload function (used for GitHub)
+   * @param markFunction - Platform-specific mark function (used for GitHub)
+   * @param platformUsername - Platform-specific username for ssafy.today direct upload
+   */
+  async smartUpload(
+    data: UploadData,
+    uploadFunction: (data: UploadData, callback: UploadCallback) => Promise<void>,
+    markFunction: MarkFunction,
+    platformUsername: string
+  ): Promise<void> {
+    const hasAuth = await this.hasGitHubAuth();
+
+    // platformUsername을 data에 주입하여 ssafy.today 전송 시 사용
+    const dataWithUsername: UploadData = {
+      ...data,
+      platformUsername: platformUsername,
+    };
+
+    if (hasAuth) {
+      // GitHub 인증 있음: 기존 흐름 (GitHub 업로드 → ssafy.today 자동 전송)
+      log.info(`${this.config.platformName} - GitHub auth available, using full upload flow`);
+      await this.beginUpload(dataWithUsername, uploadFunction, markFunction);
+    } else {
+      // GitHub 인증 없음: ssafy.today로만 전송
+      log.info(`${this.config.platformName} - No GitHub auth, sending to ssafy.today directly`);
+      await this.sendToSsafyTodayOnly(dataWithUsername, platformUsername);
+    }
   }
 }

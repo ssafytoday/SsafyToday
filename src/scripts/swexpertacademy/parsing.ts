@@ -9,7 +9,7 @@ import {
   DEFAULT_MESSAGE_TEMPLATES,
   DEFAULT_FILENAME_TEMPLATE,
 } from "@/constants/templates";
-import { getProblemData, updateProblemData } from "@/swexpertacademy/storage";
+import { getProblemData, updateProblemData, flushProblemCache } from "@/swexpertacademy/storage";
 import { languages } from "@/swexpertacademy/variables";
 import { getNickname } from "@/swexpertacademy/util";
 import { getDirNameByTemplate } from "@/commons/storage";
@@ -60,6 +60,28 @@ function extractProblemId(text: string | null | undefined): string {
   if (!text) return "";
   const match = text.match(/^\s*(\d+)/);
   return match ? match[1] : "";
+}
+
+/**
+ * Extract problem ID from URL parameters
+ * Used for SolvingClub result pages where problemId is passed via URL
+ * @returns Problem ID from URL or empty string
+ */
+function extractProblemIdFromUrl(): string {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get("problemId") || "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Check if current page is SolvingClub result page
+ * SolvingClub pages have different HTML structure than regular problem pages
+ */
+function isSolvingClubResultPage(): boolean {
+  return window.location.pathname.includes("/problemPassedUser.do");
 }
 
 // Parse code result interface
@@ -188,6 +210,8 @@ export async function parseCode(): Promise<ParseCodeResult | undefined> {
   const code = textSourceEl?.value || "";
 
   await updateProblemData(problemId, { code, contestProbId });
+  // Flush cache immediately before page navigation to ensure data is persisted
+  await flushProblemCache();
   return { problemId, contestProbId };
 }
 
@@ -196,50 +220,112 @@ export async function parseCode(): Promise<ParseCodeResult | undefined> {
  * @returns Parsed problem data for upload
  */
 export async function parseData(): Promise<ParsedProblemData | undefined> {
-  const searchInputElement = document.querySelector("#searchinput") as HTMLInputElement | null;
-  if (!searchInputElement) {
-    log.error("parseData: #searchinput 요소를 찾을 수 없습니다.");
-    return;
-  }
-  const nickname = searchInputElement.value;
+  const isSolvingClub = isSolvingClubResultPage();
+  const currentUserNickname = getNickname();
 
   log.debug(
-    "사용자 로그인 정보 및 유무 체크",
-    nickname,
-    document.querySelector("#problemForm div.info")
+    "parseData: 페이지 타입 확인",
+    isSolvingClub ? "SolvingClub" : "일반",
+    "currentUser:",
+    currentUserNickname
   );
 
-  // Check if user matches and has PASS record
-  if (getNickname() !== nickname) return;
-  if (isNull(document.querySelector("#problemForm div.info"))) return;
+  // User verification differs by page type
+  if (isSolvingClub) {
+    // SolvingClub page: Check if current user has submission records in the list
+    const userSubmissions = document.querySelectorAll("#problemForm dl dt a");
+    const hasUserSubmission = Array.from(userSubmissions).some(
+      (el) => el.textContent?.trim() === currentUserNickname
+    );
+
+    log.debug(
+      "parseData: SolvingClub 제출 기록 확인",
+      "hasUserSubmission:",
+      hasUserSubmission,
+      "submissions:",
+      userSubmissions.length
+    );
+
+    if (!hasUserSubmission) {
+      log.debug("parseData: 현재 사용자의 제출 기록이 없습니다.");
+      return;
+    }
+  } else {
+    // Regular page: Check #searchinput value matches current user
+    const searchInputElement = document.querySelector("#searchinput") as HTMLInputElement | null;
+    if (!searchInputElement) {
+      log.error("parseData: #searchinput 요소를 찾을 수 없습니다.");
+      return;
+    }
+    const nickname = searchInputElement.value;
+
+    log.debug(
+      "parseData: 일반 페이지 닉네임 확인",
+      "searchInput:",
+      nickname,
+      "currentUser:",
+      currentUserNickname
+    );
+
+    if (currentUserNickname !== nickname) {
+      log.debug("parseData: 닉네임 불일치");
+      return;
+    }
+  }
+
+  // Check if user has PASS record (common for both page types)
+  if (isNull(document.querySelector("#problemForm div.info"))) {
+    log.debug("parseData: #problemForm div.info 요소를 찾을 수 없습니다.");
+    return;
+  }
 
   log.debug("결과 데이터 파싱 시작");
 
-  const titleElement = document.querySelector("div.problem_box > p.problem_title");
+  // Problem title - try multiple selectors for compatibility with both page types
+  const titleElement =
+    document.querySelector("div.problem_box > p.problem_title") ||
+    document.querySelector("p.problem_title");
   if (!titleElement) {
     log.error("parseData: 문제 제목 요소를 찾을 수 없습니다.");
     return;
   }
-  const title = titleElement.textContent
-    ?.replace(/ D[0-9]$/, "")
-    .replace(/^[^.]*/, "")
-    .substring(1)
-    .trim() || "";
+  // Normalize whitespace first (tabs, newlines -> single space), then parse title
+  const rawTitle = titleElement.textContent?.replace(/\s+/g, " ").trim() || "";
+  const title = rawTitle
+    .replace(/ D[0-9]+$/, "")  // Remove level badge like " D5"
+    .replace(/^[^.]*\./, "")   // Remove prefix like "[S/W 문제해결 응용] 3일차 - " up to and including first dot
+    .trim() || rawTitle;       // Fallback to raw title if parsing fails
 
-  // Level
-  const levelEl = document.querySelector("div.problem_box > p.problem_title > span.badge");
+  // Level - try multiple selectors
+  const levelEl =
+    document.querySelector("div.problem_box > p.problem_title > span.badge") ||
+    document.querySelector("p.problem_title > span.badge");
   const level = levelEl?.textContent || "Unrated";
 
-  // Problem ID
-  const problemIdElement = document.querySelector(
-    "body > div.container > div.container.sub > div > div.problem_box > p"
-  );
-  if (!problemIdElement) {
-    log.error("parseData: 문제번호 요소를 찾을 수 없습니다.");
+  // Problem ID - try multiple sources for compatibility with both page types
+  let problemId = "";
+
+  // Method 1: Try URL parameter (used for SolvingClub result pages)
+  problemId = extractProblemIdFromUrl();
+  if (problemId) {
+    log.debug("parseData: problemId from URL:", problemId);
+  }
+
+  // Method 2: Try DOM selectors (for regular result pages)
+  if (!problemId) {
+    const problemIdElement =
+      document.querySelector("body > div.container > div.container.sub > div > div.problem_box > p") ||
+      document.querySelector("p.problem_title");
+    if (problemIdElement) {
+      problemId = extractProblemId(problemIdElement.textContent);
+      log.debug("parseData: problemId from DOM:", problemId, "raw:", problemIdElement.textContent);
+    }
+  }
+
+  if (!problemId) {
+    log.error("parseData: 문제번호를 찾을 수 없습니다.");
     return;
   }
-  const problemId = extractProblemId(problemIdElement.textContent);
-  log.debug("parseData: problemId:", problemId, "raw:", problemIdElement.textContent);
 
   // Contest problem ID
   const contestProbIdElements = document.querySelectorAll("#contestProbId");

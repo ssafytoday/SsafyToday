@@ -48,3 +48,11 @@ export async function getProblemData(
   const data = await problemCache.get(problemId);
   return data ?? undefined;
 }
+
+/**
+ * Flush pending cache writes to storage
+ * Must be called before page navigation to ensure data is persisted
+ */
+export async function flushProblemCache(): Promise<void> {
+  await problemCache.flush();
+}

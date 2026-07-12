@@ -28,6 +28,7 @@ interface UploadProblemData {
   message: string;
   platform?: string;
   problemInfo?: BaseProblemInfo;
+  platformUsername?: string;  // 플랫폼별 사용자명 (백준 ID, 프로그래머스 닉네임, SWEA 닉네임)
 }
 
 /**
@@ -113,6 +114,7 @@ export default class UploadService {
 
             const submissionData: SubmissionData = {
               username: githubUsername,
+              platformUsername: problemData.platformUsername || "",  // 플랫폼별 사용자명도 함께 전송
               platform: platform,
               problemData: {
                 ...problemDataBase,
@@ -146,6 +148,89 @@ export default class UploadService {
     } catch (error) {
       log.error("Error uploading problem:", error);
       throw error;
+    }
+  }
+
+  /**
+   * GitHub 업로드 없이 ssafy.today로만 전송
+   * GitHub 인증이 없는 사용자를 위한 독립 전송 기능
+   *
+   * @param problemData - 문제 데이터
+   * @param platformUsername - 플랫폼별 사용자명 (백준 ID, 프로그래머스 닉네임, SWEA 닉네임)
+   */
+  static async sendToSsafyTodayDirect(
+    problemData: UploadProblemData,
+    platformUsername: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { code, platform, problemInfo } = problemData;
+
+      if (!platformUsername || !platform) {
+        log.warn("sendToSsafyTodayDirect: Missing platformUsername or platform");
+        return { success: false, error: "Missing platformUsername or platform" };
+      }
+
+      // 기본 problemData 구성
+      const problemDataBase = {
+        problemId: String(problemInfo?.problemId || ""),
+        title: problemInfo?.title || "",
+        level: problemInfo?.level || "",
+        language: problemInfo?.language || "",
+        code: code,
+        runtime: problemInfo?.runtime || "",
+        memory: problemInfo?.memory || "",
+        submissionTime: toISOString(problemInfo?.submissionTime),
+        tags: (Array.isArray(problemInfo?.tags) ? problemInfo.tags : []) as string[],
+        link: (typeof problemInfo?.link === "string" ? problemInfo.link : undefined) as string | undefined,
+      };
+
+      // 플랫폼별 추가 필드
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const info = problemInfo as any;
+      let platformSpecificData = {};
+
+      if (platform === "백준") {
+        platformSpecificData = {
+          problemDescription: info?.problem_description || "",
+          problemInput: info?.problem_input || "",
+          problemOutput: info?.problem_output || "",
+        };
+      } else if (platform === "프로그래머스") {
+        platformSpecificData = {
+          division: info?.division || "",
+          resultMessage: info?.result_message || "",
+        };
+      } else if (platform === "SWEA") {
+        platformSpecificData = {
+          length: info?.length || "",
+        };
+      }
+
+      const submissionData: SubmissionData = {
+        username: "", // GitHub 연동 없으므로 빈 문자열
+        platformUsername: platformUsername,
+        platform: platform,
+        problemData: {
+          ...problemDataBase,
+          ...platformSpecificData,
+        },
+        metadata: {
+          extensionVersion: chrome.runtime.getManifest().version,
+          timestamp: new Date().toISOString(),
+          // GitHub 관련 필드 생략
+        },
+      };
+
+      const result = await SsafyAPIService.sendSubmission(submissionData);
+      if (result.success) {
+        log.info("SSAFY Today direct submission sent successfully:", result.data);
+      } else {
+        log.warn("SSAFY Today direct submission failed:", result.error);
+      }
+      return result;
+    } catch (error) {
+      log.error("sendToSsafyTodayDirect error:", error);
+      return { success: false, error: String(error) };
     }
   }
 

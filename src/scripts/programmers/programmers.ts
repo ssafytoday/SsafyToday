@@ -19,6 +19,8 @@ class ProgrammersHub extends PlatformHubBase {
     super({
       platformName: PLATFORMS.PROGRAMMERS,
       loaderInterval: 2000,
+      // API 제출을 위해 enable 체크를 건너뜀 (비활성화 상태에서도 동작)
+      skipEnableCheck: true,
     });
   }
 
@@ -130,10 +132,9 @@ class ProgrammersHub extends PlatformHubBase {
    * Initialize the ProgrammersHub extension
    */
   async init(): Promise<boolean> {
-    const isEnabled = await super.init();
-    if (!isEnabled) return false;
+    log.info(`Initializing ${this.config.platformName} hub`);
 
-    // 회원가입 연동을 위해 사용자명 저장
+    // 회원가입 연동을 위해 사용자명 저장 (활성화 여부와 관계없이)
     // 먼저 즉시 찾기 시도 (팝업이 이미 열려있는 경우)
     const username = this.findUsername();
     if (username) {
@@ -145,9 +146,14 @@ class ProgrammersHub extends PlatformHubBase {
     }
 
     if (this.isProgrammersLessonPage()) {
+      // 제출 모니터링은 활성화 여부와 관계없이 동작
       this.startSubmissionMonitoring();
-      // Initialize hint UI on lesson page
-      this.initHintUI();
+
+      // Hint UI는 enable 상태일 때만 활성화
+      const isEnabled = await checkEnable();
+      if (isEnabled) {
+        this.initHintUI();
+      }
     }
 
     return true;
@@ -270,11 +276,22 @@ class ProgrammersHub extends PlatformHubBase {
       );
 
       if (result?.success && result?.data) {
-        await this.beginUpload(result.data as UploadData, uploadOneSolveProblemOnGit, markUploadedCSS);
+        // Get platform username from storage
+        const storageResult = await chrome.storage.local.get(['platform_programmers_username']);
+        const platformUsername = storageResult.platform_programmers_username || this.findUsername() || "";
+
+        // Use smartUpload for automatic routing (GitHub or ssafy.today direct)
+        await this.smartUpload(
+          result.data as UploadData,
+          uploadOneSolveProblemOnGit,
+          markUploadedCSS,
+          platformUsername
+        );
       }
     };
 
-    this.setupSubmissionMonitoring(checker, onSuccess);
+    // skipEnableCheck: true로 비활성화 상태에서도 모니터링
+    this.setupSubmissionMonitoring(checker, onSuccess, { skipEnableCheck: true });
   }
 }
 

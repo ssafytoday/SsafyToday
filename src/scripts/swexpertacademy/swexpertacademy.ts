@@ -1,4 +1,4 @@
-import PlatformHubBase, { Toast, log, type UploadData } from "@/commons/platformhub-base";
+import PlatformHubBase, { Toast, log, checkEnable, type UploadData } from "@/commons/platformhub-base";
 import { SubmissionChecker } from "@/commons/loader-service";
 import { parseCode, parseData, updateTextSourceEvent } from "@/swexpertacademy/parsing";
 import uploadOneSolveProblemOnGit from "@/swexpertacademy/uploadfunctions";
@@ -24,16 +24,17 @@ interface SWEAFormData {
 class SWExpertAcademyHub extends PlatformHubBase {
   constructor() {
     super({
-      platformName: PLATFORMS.SWEXPERTACADEMY,
+      platformName: "SWEA",  // API expects "SWEA" not "SW Expert Academy"
       loaderInterval: 2000,
+      // API 제출을 위해 enable 체크를 건너뜀 (비활성화 상태에서도 동작)
+      skipEnableCheck: true,
     });
   }
 
   async init(): Promise<boolean> {
-    const isEnabled = await super.init();
-    if (!isEnabled) return false;
+    log.info(`Initializing ${this.config.platformName} hub`);
 
-    // 회원가입 연동을 위해 닉네임 저장
+    // 회원가입 연동을 위해 닉네임 저장 (활성화 여부와 관계없이)
     const nickname = getNickname();
     if (nickname) {
       try {
@@ -46,12 +47,25 @@ class SWExpertAcademyHub extends PlatformHubBase {
       }
     }
 
-    if (this.isSWEASolvingPage()) {
-      this.startSubmissionMonitoring();
-      // Initialize hint UI on solving page
-      this.initHintUI();
-    } else if (this.isSWEAResultPage()) {
+    // 결과 페이지 처리 (활성화 여부와 관계없이)
+    if (this.isSWEAResultPage()) {
+      log.info("SWEA result page detected, proceeding with upload");
       await this.parseAndUpload();
+      return true;
+    }
+
+    // 풀이 페이지 처리 (활성화 여부와 관계없이 모니터링, Hint는 enable 시에만)
+    if (this.isSWEASolvingPage()) {
+      log.info("SWEA solving page detected");
+      this.checkAndSaveSolvingClubContext();
+      this.startSubmissionMonitoring();
+
+      // Hint UI는 enable 상태일 때만 활성화
+      const isEnabled = await checkEnable();
+      if (isEnabled) {
+        this.initHintUI();
+      }
+      return true;
     }
 
     return true;
@@ -293,14 +307,23 @@ class SWExpertAcademyHub extends PlatformHubBase {
         return;
       }
 
-      await this.beginUpload(parsedData as unknown as UploadData, uploadOneSolveProblemOnGit, markUploadedCSS);
+      // Get platform username from storage or current page
+      const storageResult = await chrome.storage.local.get(['platform_swea_nickname']);
+      const platformUsername = storageResult.platform_swea_nickname || getNickname() || "";
+
+      // Use smartUpload for automatic routing (GitHub or ssafy.today direct)
+      await this.smartUpload(
+        parsedData as unknown as UploadData,
+        uploadOneSolveProblemOnGit,
+        markUploadedCSS,
+        platformUsername
+      );
     } catch (error) {
       log.error("Error in SWEA parseAndUpload:", error);
     }
   }
 
   private startSubmissionMonitoring(): void {
-    this.checkAndSaveSolvingClubContext();
     Toast.info("SW Expert Academy 문제 모니터링을 시작합니다.", 3000);
 
     const checker = SubmissionChecker.createTextChecker(
@@ -322,7 +345,7 @@ class SWExpertAcademyHub extends PlatformHubBase {
         }
 
         const formData = this.getFormData();
-        const redirectUrl = this.buildRedirectUrl(codeResult.contestProbId, formData);
+        const redirectUrl = this.buildRedirectUrl(codeResult.contestProbId, formData, codeResult.problemId);
         log.info("결과 페이지로 이동:", redirectUrl);
         window.location.href = redirectUrl;
       } catch (error) {
@@ -330,10 +353,11 @@ class SWExpertAcademyHub extends PlatformHubBase {
       }
     };
 
-    this.setupSubmissionMonitoring(checker, onSuccess);
+    // skipEnableCheck: true 옵션으로 비활성화 상태에서도 모니터링
+    this.setupSubmissionMonitoring(checker, onSuccess, { skipEnableCheck: true });
   }
 
-  private buildRedirectUrl(contestProbId: string, formData: SWEAFormData): string {
+  private buildRedirectUrl(contestProbId: string, formData: SWEAFormData, problemId?: string): string {
     const origin = window.location.origin;
 
     if (formData.solveclubId) {
@@ -344,6 +368,10 @@ class SWExpertAcademyHub extends PlatformHubBase {
         probBoxId: formData.categoryId,
         extension: "BaekjoonHub",
       });
+      // Add problemId to URL for cache lookup on result page
+      if (problemId) {
+        params.set("problemId", problemId);
+      }
       return `${baseUrl}?${params.toString()}`;
     }
 
@@ -353,6 +381,10 @@ class SWExpertAcademyHub extends PlatformHubBase {
       nickName: getNickname(),
       extension: "BaekjoonHub",
     });
+    // Add problemId to URL for cache lookup on result page
+    if (problemId) {
+      params.set("problemId", problemId);
+    }
     return `${baseUrl}?${params.toString()}`;
   }
 }

@@ -9,6 +9,8 @@ import type { CheckCondition, SuccessCallback, SubmissionCheckerOptions } from "
 interface LoaderConfig {
   interval: number;
   platformName: string;
+  /** Skip enable check - allows monitoring even when extension is disabled (for API submission) */
+  skipEnableCheck?: boolean;
 }
 
 /**
@@ -34,10 +36,13 @@ export class LoaderService {
   start(checkCondition: CheckCondition, onSuccess: SuccessCallback): void {
     this.loader = setInterval(async () => {
       try {
-        const enable = await checkEnable();
-        if (!enable) {
-          this.stop();
-          return;
+        // skipEnableCheck가 true면 enable 체크를 건너뜀 (API 제출 전용)
+        if (!this.config.skipEnableCheck) {
+          const enable = await checkEnable();
+          if (!enable) {
+            this.stop();
+            return;
+          }
         }
 
         if (await checkCondition()) {
