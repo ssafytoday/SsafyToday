@@ -230,26 +230,31 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
     currentUserNickname
   );
 
-  // User verification differs by page type
+  // User verification differs by page type.
+  // SolvingClub 페이지는 클럽원 전원의 통과 목록 — 유저마다 div.problem_smt 블록
+  // (dl.smt_txt: 이름·제출일 + div.info: 성능)을 갖는다. document 레벨 querySelector로
+  // 읽으면 첫 번째 클럽원의 성능·제출일이 잡히고, 백엔드가 제출일로 created_at을
+  // 백데이트하므로 남의 값이 기록된다 — 반드시 내 블록(entryScope) 안에서만 읽는다.
+  let entryScope: Document | Element = document;
   if (isSolvingClub) {
-    // SolvingClub page: Check if current user has submission records in the list
     const userSubmissions = document.querySelectorAll("#problemForm dl dt a");
-    const hasUserSubmission = Array.from(userSubmissions).some(
+    const myLink = Array.from(userSubmissions).find(
       (el) => el.textContent?.trim() === currentUserNickname
     );
 
     log.debug(
       "parseData: SolvingClub 제출 기록 확인",
       "hasUserSubmission:",
-      hasUserSubmission,
+      !!myLink,
       "submissions:",
       userSubmissions.length
     );
 
-    if (!hasUserSubmission) {
+    if (!myLink) {
       log.debug("parseData: 현재 사용자의 제출 기록이 없습니다.");
       return;
     }
+    entryScope = myLink.closest("div.problem_smt") || document;
   } else {
     // Regular page: Check #searchinput value matches current user
     const searchInputElement = document.querySelector("#searchinput") as HTMLInputElement | null;
@@ -274,8 +279,11 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
   }
 
   // Check if user has PASS record (common for both page types)
-  if (isNull(document.querySelector("#problemForm div.info"))) {
-    log.debug("parseData: #problemForm div.info 요소를 찾을 수 없습니다.");
+  const infoBlock = entryScope.querySelector(
+    entryScope === document ? "#problemForm div.info" : "div.info"
+  );
+  if (isNull(infoBlock)) {
+    log.debug("parseData: div.info 요소를 찾을 수 없습니다.");
     return;
   }
 
@@ -340,18 +348,18 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
   // Problem link
   const link = `${urls.SWEA_PROBLEM_DETAIL_URL}?contestProbId=${contestProbId}`;
 
-  // Language, memory, runtime, length
-  const languageElement = document.querySelector(
-    "#problemForm div.info > ul > li:nth-child(1) > span:nth-child(1)"
+  // Language, memory, runtime, length — 내 항목의 div.info(infoBlock) 기준
+  const languageElement = infoBlock!.querySelector(
+    ":scope > ul > li:nth-child(1) > span:nth-child(1)"
   );
-  const memoryElement = document.querySelector(
-    "#problemForm div.info > ul > li:nth-child(2) > span:nth-child(1)"
+  const memoryElement = infoBlock!.querySelector(
+    ":scope > ul > li:nth-child(2) > span:nth-child(1)"
   );
-  const runtimeElement = document.querySelector(
-    "#problemForm div.info > ul > li:nth-child(3) > span:nth-child(1)"
+  const runtimeElement = infoBlock!.querySelector(
+    ":scope > ul > li:nth-child(3) > span:nth-child(1)"
   );
-  const lengthElement = document.querySelector(
-    "#problemForm div.info > ul > li:nth-child(4) > span:nth-child(1)"
+  const lengthElement = infoBlock!.querySelector(
+    ":scope > ul > li:nth-child(4) > span:nth-child(1)"
   );
 
   if (!languageElement || !memoryElement || !runtimeElement || !lengthElement) {
@@ -367,8 +375,8 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
   // File extension
   const languageExtension = languages[language.toLowerCase()] || "txt";
 
-  // Submission time
-  const submissionTimeElement = document.querySelector(".smt_txt > dd");
+  // Submission time — SolvingClub에서는 내 블록의 dl.smt_txt에서 읽는다
+  const submissionTimeElement = entryScope.querySelector(".smt_txt > dd");
   if (!submissionTimeElement) {
     log.error("제출 시간 요소를 찾을 수 없습니다.");
     return;

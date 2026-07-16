@@ -90,7 +90,15 @@ class SWExpertAcademyHub extends PlatformHubBase {
         ?.replace(/ D[0-9]$/, "")
         .replace(/^[^.]*/, "")
         .substring(1)
-        .trim() || `Problem ${problemId}`;
+        .trim() || "";
+      // 풀이 페이지(solvingProblem.do)에는 p.problem_title이 없고 h3에
+      // "1952. 제목" 형태로만 있다 — h3에서 제목을 복원한다.
+      if (!title && problemIdElement?.textContent) {
+        title = problemIdElement.textContent.replace(/^\s*\d+\.\s*/, "").trim();
+      }
+      if (!title) {
+        title = `Problem ${problemId}`;
+      }
 
       // Level
       const levelEl = document.querySelector("div.problem_box > p.problem_title > span.badge");
