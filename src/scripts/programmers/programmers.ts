@@ -164,17 +164,21 @@ class ProgrammersHub extends PlatformHubBase {
    */
   private initHintUI(): void {
     try {
-      // Get problem info from page
-      const lessonContent = document.querySelector("div.main > div.lesson-content");
-      const problemId = lessonContent?.getAttribute("data-lesson-id") || "";
+      // Get problem info from page — 2026 개편으로 div.main 래퍼가 사라져
+      // "div.main > div.lesson-content"는 더 이상 매칭되지 않는다 (parsing.ts와 동일 대응)
+      const lessonContent =
+        document.querySelector("div.lesson-content") || document.querySelector("[data-lesson-id]");
+      const problemId =
+        lessonContent?.getAttribute("data-lesson-id") ||
+        window.location.pathname.match(/\/lessons\/(\d+)/)?.[1] ||
+        "";
 
       if (!problemId) {
         log.debug("ProgrammersHub - Could not find problem ID for hint UI");
         return;
       }
 
-      const bodyLessonContent = document.querySelector("body > div.main > div.lesson-content");
-      const level = bodyLessonContent?.getAttribute("data-challenge-level") || "Unknown";
+      const level = lessonContent?.getAttribute("data-challenge-level") || "Unknown";
 
       const titleElement = document.querySelector(".algorithm-title .challenge-title");
       const title = titleElement?.textContent?.replace(/\\n/g, "").trim() || `Problem ${problemId}`;

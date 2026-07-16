@@ -152,11 +152,16 @@ export async function parseData(): Promise<ParsedProblemData> {
   const linkMeta = document.querySelector('head > meta[name$="url"]') as HTMLMetaElement | null;
   const link = linkMeta?.content?.replace(/\?.*/g, "").trim() || "";
 
-  const lessonContent = document.querySelector("div.main > div.lesson-content");
-  const problemId = lessonContent?.getAttribute("data-lesson-id") || "";
-
-  const bodyLessonContent = document.querySelector("body > div.main > div.lesson-content");
-  const level = bodyLessonContent?.getAttribute("data-challenge-level") || "";
+  // 2026 개편으로 div.main 래퍼가 사라져 "div.main > div.lesson-content"가 매칭되지
+  // 않는다 (업스트림 BaekjoonHub도 동일하게 느슨한 셀렉터로 전환). problemId는 URL로도
+  // 복원 가능 — 백엔드가 빈 problemId/level을 INVALID_REQUEST로 거부하므로 폴백 필수.
+  const lessonContent =
+    document.querySelector("div.lesson-content") || document.querySelector("[data-lesson-id]");
+  const problemId =
+    lessonContent?.getAttribute("data-lesson-id") ||
+    window.location.pathname.match(/\/lessons\/(\d+)/)?.[1] ||
+    "";
+  const level = lessonContent?.getAttribute("data-challenge-level") || "0";
 
   const breadcrumb = document.querySelector("ol.breadcrumb");
   const division = breadcrumb
@@ -282,16 +287,46 @@ export async function parseData(): Promise<ParsedProblemData> {
       .filter((text) => text.includes(":"))
       .reduce((cur, next) => (cur ? `${cur}<br/>${next}` : next), "") || "Empty";
 
-  // Parse runtime and memory
-  const [runtime, memory] = [...document.querySelectorAll("td.result.passed")]
+  // Parse runtime and memory — 3단 폴백.
+  // 개편 후 td.result.passed 셀에서 "12.3ms, 45.6MB" 형태가 사라져 기존 파싱이
+  // 빈 문자열을 만들었고, 백엔드는 빈 runtime/memory를 INVALID_REQUEST로 거부한다.
+  // 형식이 검증된 값만 채택하고, 실패 시 콘솔 출력의 "(X.XXms, YY.YMB)" 패턴,
+  // 그래도 없으면 기존 기본값으로 — 어떤 경우에도 빈 값은 보내지 않는다.
+  let runtime = "";
+  let memory = "";
+
+  // Method 1: legacy result table cells ("12.34ms, 56.7MB")
+  const passedCells = [...document.querySelectorAll("td.result.passed")]
     .map((x) => (x as HTMLElement).innerText)
     .map((x) => x.replace(/[^., 0-9a-zA-Z]/g, "").trim())
     .map((x) => x.split(", "))
-    .reduce(
-      (x, y) => (Number(x[0].slice(0, -2)) > Number(y[0].slice(0, -2)) ? x : y),
-      ["0.00ms", "0.0MB"]
-    )
-    .map((x) => x.replace(/(?<=[0-9])(?=[A-Za-z])/, " "));
+    .filter((x) => x.length === 2 && /ms$/i.test(x[0]) && /mb$/i.test(x[1]));
+  if (passedCells.length > 0) {
+    [runtime, memory] = passedCells
+      .reduce((x, y) => (Number(x[0].slice(0, -2)) > Number(y[0].slice(0, -2)) ? x : y))
+      .map((x) => x.replace(/(?<=[0-9])(?=[A-Za-z])/, " "));
+  }
+
+  // Method 2: result/console text "테스트 N 〉 통과 (0.05ms, 52.1MB)" — 가장 느린 케이스 채택
+  if (!runtime || !memory) {
+    const resultAreas = document.querySelectorAll(
+      "#output, .console-content, .modal-body, .result-area"
+    );
+    const resultText = (resultAreas.length > 0 ? [...resultAreas] : [document.body])
+      .map((el) => (el as HTMLElement).innerText || "")
+      .join("\n");
+    const perf = [...resultText.matchAll(/\(([\d.]+)\s*ms\s*,\s*([\d.]+)\s*MB\)/gi)];
+    if (perf.length > 0) {
+      const slowest = perf.reduce((x, y) => (Number(x[1]) > Number(y[1]) ? x : y));
+      runtime = `${slowest[1]} ms`;
+      memory = `${slowest[2]} MB`;
+      log.debug("[SsafyToday]: runtime/memory parsed from result text");
+    }
+  }
+
+  // Method 3: defaults (기존 파서의 기본값과 동일)
+  if (!runtime) runtime = "0.00 ms";
+  if (!memory) memory = "0.0 MB";
 
   // Get language for folder organization
   const languageButton = document.querySelector("div#tour7 > button");
