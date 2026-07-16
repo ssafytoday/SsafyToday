@@ -8,6 +8,7 @@ import { Toast } from "@/commons/toast";
 import { checkEnable } from "@/commons/enable";
 import { LoaderFactory, LoaderService } from "@/commons/loader-service";
 import UploadService, { UploadHandlerFactory } from "@/commons/upload-service";
+import { flushPendingSubmissions } from "@/commons/pending-submissions";
 import log from "@/commons/logger";
 import { TIMEOUTS, RETRY_LIMITS } from "@/constants/config";
 import type { PlatformConfig, CheckCondition, SuccessCallback } from "@/types/platform";
@@ -63,6 +64,17 @@ export default class PlatformHubBase {
     };
 
     this.init().catch((error) => log.error(`Error initializing ${this.config.platformName}:`, error));
+
+    // 이전에 전송 실패해 큐에 남은 제출 재시도 — 페이지 초기화와 경합하지 않게
+    // 지연 실행 (페이지 로드당 1회·항목당 30분 간격 제한은 큐 모듈이 관리).
+    // 무작위 지터: 여러 탭을 한꺼번에 열 때 flush 타이머가 정렬돼 같은 항목을
+    // 동시에 중복 POST하는 것을 완화 (claim 쓰기와 이중 방어)
+    setTimeout(
+      () => {
+        void flushPendingSubmissions();
+      },
+      5000 + Math.floor(Math.random() * 10000)
+    );
   }
 
   /**
@@ -400,6 +412,14 @@ export default class PlatformHubBase {
           submissionTime: data.submissionTime as string,
           link: data.link as string,
           length: data.length as string,
+          // parseData가 flat 구조로 반환하는 플랫폼별 필드 — 여기서 빠지면 GitHub
+          // 미연동 직접 전송(sendToSsafyTodayDirect)에서 division/resultMessage 등이
+          // 항상 빈 값으로 백엔드에 저장된다
+          division: data.division as string,
+          result_message: data.result_message as string,
+          problem_description: data.problem_description as string,
+          problem_input: data.problem_input as string,
+          problem_output: data.problem_output as string,
         },
       };
 

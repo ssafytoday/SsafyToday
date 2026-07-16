@@ -149,8 +149,13 @@ export async function makeData(origin: ProgrammersProblemOrigin): Promise<Parsed
  * @returns Parsed problem data for upload
  */
 export async function parseData(): Promise<ParsedProblemData> {
+  // 2026 개편 후 og:url/twitter:url 메타가 문제 URL이 아니라 홈("https://programmers.co.kr/")
+  // 을 담는다 — 문제 경로가 아니면 현재 주소로 대체 (README 링크·백엔드 link 필드 오염 방지)
   const linkMeta = document.querySelector('head > meta[name$="url"]') as HTMLMetaElement | null;
-  const link = linkMeta?.content?.replace(/\?.*/g, "").trim() || "";
+  const metaUrl = linkMeta?.content?.replace(/\?.*/g, "").trim() || "";
+  const link = /\/lessons\/\d+/.test(metaUrl)
+    ? metaUrl
+    : `${window.location.origin}${window.location.pathname}`;
 
   // 2026 개편으로 div.main 래퍼가 사라져 "div.main > div.lesson-content"가 매칭되지
   // 않는다 (업스트림 BaekjoonHub도 동일하게 느슨한 셀렉터로 전환). problemId는 URL로도

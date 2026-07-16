@@ -8,6 +8,7 @@ import { isNull, isEmpty, preProcessEmptyObj } from "./util";
 import { toISOString } from "./date-util";
 import log from "@/commons/logger";
 import { SsafyAPIService, type SubmissionData } from "./ssafy-api";
+import { enqueuePendingSubmission } from "./pending-submissions";
 import type { ProblemData, BaseProblemInfo } from "@/types/problem";
 import type { UploadResult, UploadCallback, UploadHandlerResult, ParseDataFunction, MarkFunction, StartUploadFunction } from "@/types/upload";
 import type { Stats } from "@/types/storage";
@@ -106,7 +107,9 @@ export default class UploadService {
                 division: info?.division || "",
                 resultMessage: info?.result_message || "",
               };
-            } else if (platform === "SWEA") {
+            } else if (platform === "SW Expert Academy") {
+              // PLATFORMS.SWEXPERTACADEMY 값과 일치해야 한다 — 과거 "SWEA" 리터럴은
+              // 죽은 분기라 length가 항상 누락됐다
               platformSpecificData = {
                 length: info?.length || "",
               };
@@ -135,6 +138,9 @@ export default class UploadService {
               log.info("SSAFY Today submission sent successfully:", ssafyResult.data);
             } else {
               log.warn("SSAFY Today submission failed:", ssafyResult.error);
+              // GitHub 커밋은 이미 성공해 SHA 캐시에 기록됐으므로 같은 코드로는
+              // 재전송이 다시 트리거되지 않는다 — 큐에 넣어 나중에 재시도
+              await enqueuePendingSubmission(submissionData);
             }
           }
         } catch (ssafyError) {
@@ -200,7 +206,9 @@ export default class UploadService {
           division: info?.division || "",
           resultMessage: info?.result_message || "",
         };
-      } else if (platform === "SWEA") {
+      } else if (platform === "SW Expert Academy") {
+        // PLATFORMS.SWEXPERTACADEMY 값과 일치해야 한다 — 과거 "SWEA" 리터럴은
+        // 죽은 분기라 length가 항상 누락됐다
         platformSpecificData = {
           length: info?.length || "",
         };
@@ -226,6 +234,8 @@ export default class UploadService {
         log.info("SSAFY Today direct submission sent successfully:", result.data);
       } else {
         log.warn("SSAFY Today direct submission failed:", result.error);
+        // 미연동(USER_NOT_FOUND) 등으로 실패한 제출은 큐에 보관 후 재시도
+        await enqueuePendingSubmission(submissionData);
       }
       return result;
     } catch (error) {

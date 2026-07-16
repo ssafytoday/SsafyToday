@@ -15,6 +15,20 @@ import { initHintForProblem, cleanupHint } from "@/commons/hint-integration";
  * Extends PlatformHubBase for common platform functionality
  */
 class ProgrammersHub extends PlatformHubBase {
+  // 과거 버전이 페이지 전체 a[href*="/users/"] 스캔(구 Method 5)으로 저장했던 시스템
+  // 경로들. school 도메인의 /users/ 링크는 /users/profile·/users/challenge-activity
+  // 같은 고정 경로뿐이라(닉네임 링크 없음) 링크 스캔은 유효한 사용자명을 만들 수 없고,
+  // 실제로 'challenge-activity'가 sync-credentials를 타고 백엔드 programmers_username
+  // 까지 오염시켰다. 저장소에 남은 과거 오염값을 지워 재캡처를 유도하는 데 쓴다.
+  private static readonly POISONED_USERNAMES = new Set([
+    "challenge-activity",
+    "edit",
+    "settings",
+    "notifications",
+    "dashboard",
+    "profile",
+  ]);
+
   constructor() {
     super({
       platformName: PLATFORMS.PROGRAMMERS,
@@ -53,23 +67,30 @@ class ProgrammersHub extends PlatformHubBase {
       return profileName.textContent.trim();
     }
 
-    // Method 5: 마이페이지 링크에서 추출
-    // 단, 시스템 경로(challenge-activity 등)는 제외
-    const SYSTEM_PATHS = ['challenge-activity', 'edit', 'settings', 'notifications', 'dashboard'];
-    const myPageLinks = document.querySelectorAll('a[href*="/users/"]');
-    for (const link of myPageLinks) {
-      const href = link.getAttribute('href');
-      const match = href?.match(/\/users\/([^/?#]+)/);
-      if (match?.[1]) {
-        const username = match[1];
-        // 시스템 경로가 아닌 경우에만 반환
-        if (!SYSTEM_PATHS.includes(username.toLowerCase())) {
-          return username;
-        }
-      }
-    }
-
+    // (구 Method 5 제거) 페이지 전체 a[href*="/users/"] 스캔은 school 도메인에서
+    // 닉네임을 반환한 적이 없다 — 고정 경로(profile·challenge-activity 등)뿐이라
+    // garbage만 저장했고 SYSTEM_PATHS 목록에 없던 'profile' 같은 값이 백엔드까지
+    // 오염시킬 수 있었다. 실제 닉네임은 GNB 프로필 팝업(Method 1)이 팝업을 열지
+    // 않아도 DOM에 존재하므로 그걸로 충분하다.
     return null;
+  }
+
+  /**
+   * Remove poisoned username left in storage by old versions (Method 5 era)
+   * 오염값을 지워야 MutationObserver/Method 1이 올바른 닉네임을 재캡처하고,
+   * sync-credentials가 백엔드에 garbage를 계속 보내는 것도 멈춘다.
+   */
+  private async sanitizeStoredUsername(): Promise<void> {
+    try {
+      const result = await chrome.storage.local.get(["platform_programmers_username"]);
+      const stored = result.platform_programmers_username;
+      if (typeof stored === "string" && ProgrammersHub.POISONED_USERNAMES.has(stored.toLowerCase())) {
+        await chrome.storage.local.remove("platform_programmers_username");
+        log.warn("Removed poisoned Programmers username from storage:", stored);
+      }
+    } catch (e) {
+      log.warn("Failed to sanitize stored Programmers username:", e);
+    }
   }
 
   /**
@@ -134,8 +155,11 @@ class ProgrammersHub extends PlatformHubBase {
   async init(): Promise<boolean> {
     log.info(`Initializing ${this.config.platformName} hub`);
 
+    // 과거 버전(Method 5)이 저장한 시스템 경로 오염값 제거 → 재캡처 유도
+    await this.sanitizeStoredUsername();
+
     // 회원가입 연동을 위해 사용자명 저장 (활성화 여부와 관계없이)
-    // 먼저 즉시 찾기 시도 (팝업이 이미 열려있는 경우)
+    // GNB가 있는 페이지에서는 프로필 팝업 DOM이 숨김 상태로도 존재해 즉시 캡처된다
     const username = this.findUsername();
     if (username) {
       await this.saveUsername(username);
@@ -280,9 +304,11 @@ class ProgrammersHub extends PlatformHubBase {
       );
 
       if (result?.success && result?.data) {
-        // Get platform username from storage
+        // 라이브 페이지 우선, 저장값은 폴백 — 저장값 우선이면 프로그래머스 계정 전환 후
+        // 이전 사용자 이름으로 제출이 귀속된다 (Method 5 제거 후 findUsername은
+        // 로그인한 본인 이름만 반환하므로 라이브 우선이 항상 더 정확하다)
         const storageResult = await chrome.storage.local.get(['platform_programmers_username']);
-        const platformUsername = storageResult.platform_programmers_username || this.findUsername() || "";
+        const platformUsername = this.findUsername() || storageResult.platform_programmers_username || "";
 
         // Use smartUpload for automatic routing (GitHub or ssafy.today direct)
         await this.smartUpload(

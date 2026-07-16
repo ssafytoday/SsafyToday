@@ -5,6 +5,8 @@
  */
 
 // manifest.json에서 버전을 동적으로 로드
+import { flushPendingSubmissions } from './pending-submissions';
+
 const manifest = chrome.runtime.getManifest();
 const EXTENSION_VERSION = manifest.version;
 
@@ -136,6 +138,10 @@ async function syncCredentialsToServer(): Promise<void> {
       const result = await response.json();
       console.log('[SsafyToday] Credentials synced successfully:', result);
       sessionStorage.setItem(SYNC_SESSION_KEY, 'success');
+      // 계정이 막 연동된 시점 — 연동 전 실패로 큐에 쌓인 제출들을 재전송.
+      // force: 방금 실패한(30분 미경과) 항목도 이 순간에는 성공할 수 있으므로
+      // 재시도 간격 가드를 건너뛴다
+      void flushPendingSubmissions({ force: true });
     } else if (response.status === 401 || response.status === 403) {
       // 인증 실패 - 로그인되지 않은 상태
       console.log('[SsafyToday] Not authenticated, skipping sync');

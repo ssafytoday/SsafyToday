@@ -81,7 +81,9 @@ export class SsafyAPIService {
   /**
    * 제출 데이터를 ssafy.today로 전송
    */
-  static async sendSubmission(data: SubmissionData): Promise<{ success: boolean; error?: string; data?: SubmissionResponse }> {
+  static async sendSubmission(
+    data: SubmissionData
+  ): Promise<{ success: boolean; error?: string; errorCode?: string; data?: SubmissionResponse }> {
     try {
       const response = await fetch(SSAFY_API_URL, {
         method: "POST",
@@ -99,7 +101,9 @@ export class SsafyAPIService {
       } else {
         const errorMsg = result.error?.message || `HTTP ${response.status}`;
         log.warn("SSAFY API submission failed:", errorMsg);
-        return { success: false, error: errorMsg };
+        // errorCode는 재시도 큐가 영구 실패(INVALID_REQUEST)와 일시 실패
+        // (USER_NOT_FOUND=미연동, 네트워크)를 구분하는 데 쓴다
+        return { success: false, error: errorMsg, errorCode: result.error?.code };
       }
     } catch (error) {
       log.warn("SSAFY API request failed:", error);
