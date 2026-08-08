@@ -1,7 +1,12 @@
 import PlatformHubBase, { Toast, log, checkEnable, type UploadData } from "@/commons/platformhub-base";
 import { SubmissionChecker } from "@/commons/loader-service";
-import { parseCode, parseData, updateTextSourceEvent } from "@/swexpertacademy/parsing";
-import { startUpload, getNickname } from "@/swexpertacademy/util";
+import {
+  parseCode,
+  parseData,
+  updateTextSourceEvent,
+  type ParsedProblemData,
+} from "@/swexpertacademy/parsing";
+import { startUpload, markUploadFailedCSS, getNickname } from "@/swexpertacademy/util";
 import { PLATFORMS } from "@/constants/config";
 import { initHintForProblem, cleanupHint } from "@/commons/hint-integration";
 
@@ -21,6 +26,11 @@ interface SWEAFormData {
 }
 
 class SWExpertAcademyHub extends PlatformHubBase {
+  /** 제자리 업로드 후 팝업이 닫히기를 기다리는 재무장 타이머 */
+  private rearmTimer: ReturnType<typeof setInterval> | null = null;
+  /** disableModalConfirmButton()이 실제로 잠근 버튼들 (복구용) */
+  private disabledModalButtons: HTMLButtonElement[] = [];
+
   constructor() {
     super({
       platformName: "SWEA",  // API expects "SWEA" not "SW Expert Academy"
@@ -297,11 +307,27 @@ class SWExpertAcademyHub extends PlatformHubBase {
     const confirmButtons = document.querySelectorAll<HTMLButtonElement>(
       "div.popup_layer.show button, div.popup_layer.show .btn"
     );
+    this.disabledModalButtons = [];
     confirmButtons.forEach((btn) => {
+      this.disabledModalButtons.push(btn);
       btn.disabled = true;
       btn.style.opacity = "0.5";
       btn.style.cursor = "not-allowed";
     });
+  }
+
+  /**
+   * 잠갔던 결과 팝업 버튼을 되돌립니다.
+   * 제자리 처리 후에는 페이지가 유지되므로 버튼을 잠근 채로 두면 사용자가 팝업을
+   * 닫지 못하고, 팝업이 닫혀야 진행되는 재무장(rearmAfterPopupClose)도 멈춘다.
+   */
+  private restoreModalConfirmButton(): void {
+    this.disabledModalButtons.forEach((btn) => {
+      btn.disabled = false;
+      btn.style.opacity = "";
+      btn.style.cursor = "";
+    });
+    this.disabledModalButtons = [];
   }
 
   private async parseAndUpload(): Promise<void> {
@@ -314,18 +340,102 @@ class SWExpertAcademyHub extends PlatformHubBase {
         return;
       }
 
-      // Get platform username from storage or current page
-      const storageResult = await chrome.storage.local.get(['platform_swea_nickname']);
-      const platformUsername = storageResult.platform_swea_nickname || getNickname() || "";
-
-      await this.smartUpload(parsedData as unknown as UploadData, platformUsername);
+      await this.sendParsedSubmission(parsedData);
     } catch (error) {
       log.error("Error in SWEA parseAndUpload:", error);
     }
   }
 
-  private startSubmissionMonitoring(): void {
-    Toast.info("SW Expert Academy 문제 모니터링을 시작합니다.", 3000);
+  /**
+   * 파싱된 제출 데이터를 ssafy.today로 전송합니다.
+   * (결과 페이지 경로와 제자리 업로드 경로가 공유)
+   */
+  private async sendParsedSubmission(parsedData: ParsedProblemData): Promise<void> {
+    // Get platform username from storage or current page
+    const storageResult = await chrome.storage.local.get(['platform_swea_nickname']);
+    const platformUsername = storageResult.platform_swea_nickname || getNickname() || "";
+
+    await this.smartUpload(parsedData as unknown as UploadData, platformUsername);
+  }
+
+  /**
+   * 결과 페이지로 이동하지 않고, 해당 페이지 HTML을 fetch해 DOMParser로 파싱한 뒤
+   * 현재 화면(solvingProblem.do)에서 전송까지 처리합니다.
+   * 남은 최대 병목이던 결과 페이지 전체 로드를 제출 체인에서 제거한다.
+   *
+   * - 성공 / 전송 단계 실패: true 반환 (전송 오류는 페이지를 이동해도 동일하게
+   *   실패하므로 폴백하지 않는다)
+   * - 데이터 확보(fetch/파싱) 실패: false 반환 → 호출부가 기존 내비게이션으로 폴백
+   *
+   * @param resultUrl - 결과 페이지 URL (extension=BaekjoonHub 파라미터 포함)
+   */
+  private async tryUploadInPlace(resultUrl: string): Promise<boolean> {
+    let parsedData: ParsedProblemData | undefined;
+    try {
+      const response = await fetch(resultUrl, { credentials: "same-origin" });
+      if (!response.ok) {
+        log.error(`결과 페이지 fetch 실패(${response.status}) — 페이지 이동 방식으로 폴백합니다.`);
+        return false;
+      }
+      const html = await response.text();
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      parsedData = await parseData(doc, resultUrl);
+    } catch (error) {
+      log.error("결과 페이지 fetch/파싱 실패 — 페이지 이동 방식으로 폴백합니다.", error);
+      return false;
+    }
+
+    if (!parsedData) {
+      // 파싱 결과가 비어 있는 경우(닉네임 불일치·DOM 변경·서버 렌더 누락 등)
+      // 실제 결과 페이지에서 한 번 더 시도할 기회를 준다.
+      log.debug("제자리 파싱 결과가 비었습니다 — 페이지 이동 방식으로 폴백합니다.");
+      return false;
+    }
+
+    try {
+      startUpload();
+      await this.sendParsedSubmission(parsedData);
+    } catch (error) {
+      log.error("제자리 전송 중 오류가 발생했습니다.", error);
+      markUploadFailedCSS();
+    }
+    return true;
+  }
+
+  /**
+   * 결과 팝업이 닫힌 뒤 정답 감지를 재무장합니다.
+   * 팝업이 떠 있는 동안 바로 재무장하면 같은 'pass입니다' 텍스트로 즉시 재트리거되어
+   * 루프가 되므로, popup_layer 의 show 클래스가 사라진 것을 확인한 뒤 되돌린다.
+   */
+  private rearmAfterPopupClose(): void {
+    if (this.rearmTimer) return;
+    this.rearmTimer = setInterval(() => {
+      // 확장 업데이트/재설치로 컨텍스트가 무효화되면 타이머만 남으므로 정리한다.
+      if (!chrome.runtime?.id) {
+        this.clearRearmTimer();
+        return;
+      }
+      if (!document.querySelector("div.popup_layer.show")) {
+        this.clearRearmTimer();
+        this.startSubmissionMonitoring({ silent: true });
+      }
+    }, 500);
+  }
+
+  private clearRearmTimer(): void {
+    if (this.rearmTimer) {
+      clearInterval(this.rearmTimer);
+      this.rearmTimer = null;
+    }
+  }
+
+  /**
+   * @param options.silent - 재무장 시에는 모니터링 시작 토스트를 다시 띄우지 않는다
+   */
+  private startSubmissionMonitoring(options: { silent?: boolean } = {}): void {
+    if (!options.silent) {
+      Toast.info("SW Expert Academy 문제 모니터링을 시작합니다.", 3000);
+    }
 
     const checker = SubmissionChecker.createTextChecker(
       "div.popup_layer.show > div > p.txt",
@@ -334,7 +444,7 @@ class SWExpertAcademyHub extends PlatformHubBase {
     );
 
     const onSuccess = async (): Promise<void> => {
-      log.info("정답이 나왔습니다. 코드를 저장하고 결과 페이지로 이동합니다.");
+      log.info("정답이 나왔습니다. 코드를 저장하고 제출 기록을 전송합니다.");
 
       try {
         this.disableModalConfirmButton();
@@ -342,15 +452,29 @@ class SWExpertAcademyHub extends PlatformHubBase {
         const codeResult = await parseCode();
         if (!codeResult) {
           log.error("코드 파싱에 실패했습니다.");
+          this.restoreModalConfirmButton();
           return;
         }
 
         const formData = this.getFormData();
         const redirectUrl = this.buildRedirectUrl(codeResult.contestProbId, formData, codeResult.problemId);
-        log.info("결과 페이지로 이동:", redirectUrl);
-        window.location.href = redirectUrl;
+
+        // 결과 페이지로 이동하지 않고 현재 화면에서 fetch로 파싱·전송까지 처리한다.
+        // 데이터 확보에 실패한 경우에만 기존 방식(결과 페이지 이동)으로 폴백한다.
+        const handled = await this.tryUploadInPlace(redirectUrl);
+        if (!handled) {
+          log.info("결과 페이지로 이동:", redirectUrl);
+          window.location.href = redirectUrl;
+          return;
+        }
+
+        // 제자리 처리 후에는 페이지가 유지되므로 팝업 버튼을 되돌리고, 팝업이 닫히면
+        // 감지를 재무장해 같은 화면에서의 재제출도 이어서 처리한다.
+        this.restoreModalConfirmButton();
+        this.rearmAfterPopupClose();
       } catch (error) {
         log.error("SWEA 제출 처리 중 오류:", error);
+        this.restoreModalConfirmButton();
       }
     };
 

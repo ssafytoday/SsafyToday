@@ -47,8 +47,22 @@ BaekjoonHub 포크를 리브랜딩한 **Chrome MV3 확장** (`name: SsafyToday`)
   `sync-credentials`로 `User`에 플랫폼 계정 연동 → 이후 제출이 `platformUsername` 매칭으로
   기록된다. 연동이 안 돼 있으면 `POST /api/submissions/`가 404 USER_NOT_FOUND
   (이 경우 `pending-submissions.ts` 큐에 쌓였다가 연동 직후 재전송된다).
+- **SWEA는 결과 페이지로 이동하지 않는다**(v3.5.8, 업스트림 BaekjoonHub `e473954` 이식).
+  정답 팝업을 감지하면 `problemSolver.do`/`problemPassedUser.do`를 **fetch + DOMParser**로
+  읽어 풀이 화면(`solvingProblem.do`)에서 파싱·전송까지 끝낸다(`tryUploadInPlace`).
+  결과 페이지 전체 로드(~0.7–3초)가 제출 체인에서 빠진다.
+  - `parseData(root, resultUrl)`는 이제 파싱 기준 문서와 URL을 인자로 받는다
+    (기본값 `document`/현재 주소 — 결과 페이지에 직접 진입한 기존 경로와 하위 호환).
+    로그인 유저 닉네임(`getNickname()`)만은 fetch 문서가 아니라 **현재 화면 GNB**에서 읽는다.
+  - **fetch/파싱 실패 시에만** 기존 방식(결과 페이지 이동)으로 폴백한다. 전송 단계 오류는
+    페이지를 옮겨도 동일하게 실패하므로 폴백하지 않는다.
+  - 처리 후 페이지가 유지되므로 결과 팝업이 닫히면 감지를 재무장한다
+    (`rearmAfterPopupClose` — 팝업이 떠 있는 동안 재무장하면 같은 `pass입니다` 텍스트로
+    즉시 재트리거돼 루프가 된다). 그래서 잠갔던 팝업 버튼도 반드시 되돌려야 한다.
 - **중복 제출 방지 없음**: git 제거와 함께 SHA 캐시 기반 중복 가드도 삭제됐다(사용자 결정).
   정답 페이지를 새로고침하거나 여러 탭에서 열면 같은 제출이 반복 POST될 수 있다.
+  위 SWEA 재무장 때문에 **같은 화면에서 연속 재제출하면 매번 기록**된다(업스트림은 SHA
+  dedup으로 스킵되지만 이 포크엔 그 가드가 없다).
 
 ## 빌드 · 배포
 

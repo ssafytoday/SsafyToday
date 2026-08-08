@@ -23,7 +23,7 @@ interface SWEAProblemOrigin {
 }
 
 // Parsed problem data interface
-interface ParsedProblemData {
+export interface ParsedProblemData {
   problemId: string;
   code: string;
   // Fields needed for API submission
@@ -49,25 +49,41 @@ function extractProblemId(text: string | null | undefined): string {
 }
 
 /**
+ * 결과 페이지 URL을 pathname/search로 분해합니다.
+ * 제자리 업로드(tryUploadInPlace)에서는 현재 주소가 풀이 페이지(solvingProblem.do)이므로
+ * window.location 이 아니라 fetch 대상 결과 URL을 기준으로 판단해야 한다.
+ * @param resultUrl - 결과 페이지 URL (상대 경로 허용)
+ */
+function splitResultUrl(resultUrl: string): { pathname: string; search: string } {
+  try {
+    const url = new URL(resultUrl, window.location.href);
+    return { pathname: url.pathname, search: url.search };
+  } catch {
+    return { pathname: window.location.pathname, search: window.location.search };
+  }
+}
+
+/**
  * Extract problem ID from URL parameters
  * Used for SolvingClub result pages where problemId is passed via URL
+ * @param search - 결과 페이지 쿼리 스트링
  * @returns Problem ID from URL or empty string
  */
-function extractProblemIdFromUrl(): string {
+function extractProblemIdFromUrl(search: string): string {
   try {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get("problemId") || "";
+    return new URLSearchParams(search).get("problemId") || "";
   } catch {
     return "";
   }
 }
 
 /**
- * Check if current page is SolvingClub result page
+ * Check if the result page is a SolvingClub result page
  * SolvingClub pages have different HTML structure than regular problem pages
+ * @param pathname - 결과 페이지 경로
  */
-function isSolvingClubResultPage(): boolean {
-  return window.location.pathname.includes("/problemPassedUser.do");
+function isSolvingClubResultPage(pathname: string): boolean {
+  return pathname.includes("/problemPassedUser.do");
 }
 
 // Parse code result interface
@@ -158,18 +174,30 @@ export async function parseCode(): Promise<ParseCodeResult | undefined> {
 }
 
 /**
- * Parse problem data from the current page
+ * Parse problem data from a result page document
+ *
+ * @param root - 파싱 기준 문서. 결과 페이지를 fetch해 DOMParser로 만든 문서를 넘기면
+ *   페이지 이동 없이 제자리 업로드가 가능하다. (기본값: 현재 문서)
+ * @param resultUrl - 결과 페이지 URL. 페이지 종류(SolvingClub 여부) 판별과
+ *   problemId/contestProbId fallback에 쓰인다. (기본값: 현재 주소)
  * @returns Parsed problem data for upload
  */
-export async function parseData(): Promise<ParsedProblemData | undefined> {
-  const isSolvingClub = isSolvingClubResultPage();
+export async function parseData(
+  root: ParentNode = document,
+  resultUrl: string = window.location.href
+): Promise<ParsedProblemData | undefined> {
+  const { pathname, search } = splitResultUrl(resultUrl);
+  const isSolvingClub = isSolvingClubResultPage(pathname);
+  // 로그인 유저 이름은 fetch한 결과 페이지가 아니라 항상 현재 화면의 GNB에서 읽는다.
   const currentUserNickname = getNickname();
 
   log.debug(
     "parseData: 페이지 타입 확인",
     isSolvingClub ? "SolvingClub" : "일반",
     "currentUser:",
-    currentUserNickname
+    currentUserNickname,
+    "inPlace:",
+    root !== document
   );
 
   // User verification differs by page type.
@@ -177,9 +205,9 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
   // (dl.smt_txt: 이름·제출일 + div.info: 성능)을 갖는다. document 레벨 querySelector로
   // 읽으면 첫 번째 클럽원의 성능·제출일이 잡히고, 백엔드가 제출일로 created_at을
   // 백데이트하므로 남의 값이 기록된다 — 반드시 내 블록(entryScope) 안에서만 읽는다.
-  let entryScope: Document | Element = document;
+  let entryScope: ParentNode = root;
   if (isSolvingClub) {
-    const userSubmissions = document.querySelectorAll("#problemForm dl dt a");
+    const userSubmissions = root.querySelectorAll("#problemForm dl dt a");
     const myLink = Array.from(userSubmissions).find(
       (el) => el.textContent?.trim() === currentUserNickname
     );
@@ -196,10 +224,10 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
       log.debug("parseData: 현재 사용자의 제출 기록이 없습니다.");
       return;
     }
-    entryScope = myLink.closest("div.problem_smt") || document;
+    entryScope = myLink.closest("div.problem_smt") || root;
   } else {
     // Regular page: Check #searchinput value matches current user
-    const searchInputElement = document.querySelector("#searchinput") as HTMLInputElement | null;
+    const searchInputElement = root.querySelector("#searchinput") as HTMLInputElement | null;
     if (!searchInputElement) {
       log.error("parseData: #searchinput 요소를 찾을 수 없습니다.");
       return;
@@ -222,7 +250,7 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
 
   // Check if user has PASS record (common for both page types)
   const infoBlock = entryScope.querySelector(
-    entryScope === document ? "#problemForm div.info" : "div.info"
+    entryScope === root ? "#problemForm div.info" : "div.info"
   );
   if (isNull(infoBlock)) {
     log.debug("parseData: div.info 요소를 찾을 수 없습니다.");
@@ -233,8 +261,8 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
 
   // Problem title - try multiple selectors for compatibility with both page types
   const titleElement =
-    document.querySelector("div.problem_box > p.problem_title") ||
-    document.querySelector("p.problem_title");
+    root.querySelector("div.problem_box > p.problem_title") ||
+    root.querySelector("p.problem_title");
   if (!titleElement) {
     log.error("parseData: 문제 제목 요소를 찾을 수 없습니다.");
     return;
@@ -248,15 +276,15 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
 
   // Level - try multiple selectors
   const levelEl =
-    document.querySelector("div.problem_box > p.problem_title > span.badge") ||
-    document.querySelector("p.problem_title > span.badge");
+    root.querySelector("div.problem_box > p.problem_title > span.badge") ||
+    root.querySelector("p.problem_title > span.badge");
   const level = levelEl?.textContent || "Unrated";
 
   // Problem ID - try multiple sources for compatibility with both page types
   let problemId = "";
 
   // Method 1: Try URL parameter (used for SolvingClub result pages)
-  problemId = extractProblemIdFromUrl();
+  problemId = extractProblemIdFromUrl(search);
   if (problemId) {
     log.debug("parseData: problemId from URL:", problemId);
   }
@@ -264,8 +292,8 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
   // Method 2: Try DOM selectors (for regular result pages)
   if (!problemId) {
     const problemIdElement =
-      document.querySelector("body > div.container > div.container.sub > div > div.problem_box > p") ||
-      document.querySelector("p.problem_title");
+      root.querySelector("body > div.container > div.container.sub > div > div.problem_box > p") ||
+      root.querySelector("p.problem_title");
     if (problemIdElement) {
       problemId = extractProblemId(problemIdElement.textContent);
       log.debug("parseData: problemId from DOM:", problemId, "raw:", problemIdElement.textContent);
@@ -277,15 +305,20 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
     return;
   }
 
-  // Contest problem ID
-  const contestProbIdElements = document.querySelectorAll("#contestProbId");
-  if (contestProbIdElements.length === 0) {
+  // Contest problem ID — 히든 input 우선, 없으면 결과 URL 쿼리에서 복원한다.
+  // (제자리 업로드로 fetch한 문서에 히든 input이 없더라도 redirectUrl에는 항상 들어 있다)
+  const contestProbIdElements = root.querySelectorAll("#contestProbId");
+  let contestProbId =
+    contestProbIdElements.length > 0
+      ? (([...contestProbIdElements].slice(-1)[0] as HTMLInputElement).value || "").trim()
+      : "";
+  if (!contestProbId) {
+    contestProbId = (new URLSearchParams(search).get("contestProbId") || "").trim();
+  }
+  if (!contestProbId) {
     log.error("contestProbId 요소를 찾을 수 없습니다.");
     return;
   }
-  const contestProbId = (
-    [...contestProbIdElements].slice(-1)[0] as HTMLInputElement
-  ).value;
 
   // Problem link
   const link = `${urls.SWEA_PROBLEM_DETAIL_URL}?contestProbId=${contestProbId}`;
