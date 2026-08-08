@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -14,48 +14,14 @@
           Ssafy
           <span style="color: #0078c3">Today</span>
         </h1>
-        <p id="caption">코딩 풀이를 GitHub에 자동 동기화</p>
+        <p id="caption">코딩 풀이를 ssafy.today에 자동 기록</p>
       </header>
 
       <main class="sixteen wide center aligned column">
-        <!-- Authentication mode -->
-        <section id="auth_mode" hidden>
-          <p class="onboarding">
-            GitHub 인증 후
-            <strong>
-              Ssafy
-              <span style="color: #f18500">Today</span>
-            </strong>
-            를 사용하세요
-          </p>
-          <button id="authenticate" class="secondary button">
-            <i class="icon github" aria-hidden="true"></i>
-            Authenticate
-          </button>
-        </section>
-
-        <!-- Repo Hook mode -->
-        <section id="hook_mode" hidden>
-          <p class="onboarding">
-            저장소를 연결해서
-            <strong>
-              Ssafy
-              <span style="color: #0078c3">Today</span>
-            </strong>
-            를 사용하세요
-          </p>
-          <a id="hook_URL" href="" target="_blank" class="secondary button">
-            <i class="icon github" aria-hidden="true"></i>
-            Set up Hook
-          </a>
-        </section>
-
-        <section id="commit_mode" hidden>
-          <p id="repo_url" class="small header"></p>
-          
-          <!-- Enable Toggle -->
-          <div class="auto-commit-container">
-            <div class="auto-commit-label">Enabled</div>
+        <section id="status_mode">
+          <!-- AI 힌트 토글 (제출 기록은 이 값과 무관하게 항상 동작한다) -->
+          <div class="auto-record-container">
+            <div class="auto-record-label">AI 힌트</div>
             <div class="toggle-switch-container">
               <input type="checkbox" id="enable_popup" class="toggle-switch-checkbox" checked />
               <label for="enable_popup" class="toggle-switch-label">
@@ -65,12 +31,11 @@
             </div>
           </div>
         </section>
-
       </main>
 
       <footer id="socials" class="sixteen wide column">
-        <a title="Settings" id="settings_URL" href="settings.html" target="_blank"><i class="settings icon" aria-hidden="true"></i></a>
-        <a title="SsafyToday" href="https://ssafy.today" target="_blank"><i class="github icon" aria-hidden="true"></i></a>
+        <a title="설정" id="settings_URL" href="settings.html" target="_blank"><i class="settings icon" aria-hidden="true"></i></a>
+        <a title="SsafyToday" href="https://ssafy.today" target="_blank"><i class="home icon" aria-hidden="true"></i></a>
       </footer>
     </div>
 

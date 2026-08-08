@@ -33,17 +33,12 @@ async function getStoredCredentials() {
       'platform_baekjoon_username',
       'platform_programmers_username',
       'platform_swea_nickname',
-      'platform_gitlab_username',
-      'platform_github_username',
-      'baekjoonhub_username'  // GitHub username (기존 키, fallback)
     ]);
     // 프론트엔드가 기대하는 형식으로 변환
     return {
       baekjoon_username: result.platform_baekjoon_username || '',
       programmers_username: result.platform_programmers_username || '',
       swea_nickname: result.platform_swea_nickname || '',
-      gitlab_username: result.platform_gitlab_username || '',
-      github_username: result.platform_github_username || result.baekjoonhub_username || '',
     };
   } catch {
     return {};
@@ -57,8 +52,6 @@ async function getCredentialsForAPI() {
     baekjoon: credentials.baekjoon_username,
     programmers: credentials.programmers_username,
     swea: credentials.swea_nickname,
-    gitlab: credentials.gitlab_username,
-    github: credentials.github_username,
   };
 }
 
@@ -206,11 +199,11 @@ window.addEventListener('message', async (event) => {
     }, '*');
   }
 
-  // 캡처 모드 활성화 (플랫폼 방문 시 사용자명 수집)
+  // 캡처 모드 요청 — 프론트엔드(useExtensionComm)가 여전히 보내지만 no-op이다.
+  // 백준·프로그래머스·SWEA content script는 방문 즉시 무조건 사용자명을 저장하므로
+  // 별도 플래그가 필요 없고, 이 플래그를 읽던 github/gitlab 스크립트는 제거됐다.
   if (type === EVENTS.CAPTURE_MODE) {
-    const { platform } = event.data;
-    // 캡처 모드 설정 저장
-    await chrome.storage.local.set({ capture_mode: platform });
+    console.log('[SsafyToday] CAPTURE_MODE is a no-op; usernames are captured on visit');
   }
 });
 

@@ -13,7 +13,7 @@ const SSAFY_API_URL = "https://ssafy.today/api/submissions/";
  * Django의 UnifiedSubmissionRequestSerializer와 호환
  */
 export interface SubmissionData {
-  username: string; // GitHub username (GitHub 연동 시) 또는 빈 문자열
+  username: string; // 하위 호환용 — 항상 빈 문자열 (백엔드는 platformUsername으로 매칭)
   platformUsername?: string; // 플랫폼별 사용자명 (백준 ID, 프로그래머스 닉네임, SWEA 닉네임)
   platform: string; // '백준' | '프로그래머스' | 'SWEA'
   problemData: {
@@ -46,10 +46,6 @@ export interface SubmissionData {
   metadata: {
     extensionVersion: string;
     timestamp: string; // ISO 8601
-    githubRepo?: string; // GitHub 저장소 (GitHub 연동 시에만)
-    directory?: string;
-    fileName?: string;
-    commitMessage?: string;
   };
 }
 

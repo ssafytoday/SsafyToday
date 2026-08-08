@@ -1,41 +1,26 @@
 /**
  * Programmers platform utility functions
- * Handles UI notifications using shared upload-notifications service
+ * Handles submission UI notifications
  */
 import { uploadState } from "@/programmers/variables";
-import { createUploadNotifications } from "@/commons/upload-notifications";
+import { markUploadStarted, markUploadCompleted } from "@/commons/shared-state";
+import { Toast } from "@/commons/toast";
 import log from "@/commons/logger";
 
-// Create notification service for Programmers
-const notifications = createUploadNotifications("프로그래머스", uploadState);
-
 /**
- * Show upload start notification
+ * Show submission start notification
  */
 export function startUpload(): void {
-  notifications.startUpload();
+  markUploadStarted(uploadState);
+  Toast.info("프로그래머스 제출 기록을 전송합니다!", 3000);
   log.debug("startUpload: Upload start toast displayed");
 }
 
 /**
- * Show upload success notification with GitHub link
- * @param branches - Branch info (repoName: branchName)
- * @param directory - Directory path
- */
-export function markUploadedCSS(branches: Record<string, string>, directory: string): void {
-  if (!directory) {
-    log.warn("markUploadedCSS called with undefined directory");
-    return;
-  }
-
-  notifications.markUploadSuccess(branches, directory);
-  log.debug("markUploadedCSS: Upload success toast displayed");
-}
-
-/**
- * Show upload failure notification
+ * Show submission failure notification
  */
 export function markUploadFailedCSS(): void {
-  notifications.markUploadFailed();
+  markUploadCompleted(uploadState);
+  Toast.danger("프로그래머스 제출 기록 전송 실패!", 6000);
   log.debug("markUploadFailedCSS: Upload failure toast displayed");
 }

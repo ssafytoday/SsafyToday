@@ -6,21 +6,12 @@ import {
   isNull,
   isEmpty,
   preProcessEmptyObj,
-  parseNumberFromString,
   asyncPool,
   unescapeHtml,
   filter,
 } from "@/commons/util";
-import EnhancedTemplateService from "@/commons/enhanced-template";
-import {
-  DEFAULT_DIR_TEMPLATES,
-  DEFAULT_MESSAGE_TEMPLATES,
-  DEFAULT_FILENAME_TEMPLATE,
-} from "@/constants/templates";
 import log from "@/commons/logger";
 import { convertImageTagToAbsoluteURL } from "@/commons/ui-util";
-import { toKoreanDateString } from "@/commons/date-util";
-import { ReadmeBuilder } from "@/commons/readme-builder";
 import { httpClient } from "@/commons/http-client";
 import {
   updateProblemData,
@@ -30,16 +21,14 @@ import {
   updateSolvedACData,
   getSolvedACData,
 } from "@/baekjoon/storage";
-import { bjLevel, RESULT_CATEGORY, uploadState, getLanguageExtension } from "@/baekjoon/variables";
+import { bjLevel, RESULT_CATEGORY, uploadState } from "@/baekjoon/variables";
 import {
   findUsername,
   isExistResultTable,
   markUploadFailedCSS,
   selectBestSubmissionList,
   convertResultTableHeader,
-  langVersionRemove,
 } from "@/baekjoon/util";
-import { getDirNameByTemplate } from "@/commons/storage";
 import urls from "@/constants/url";
 
 // Submission data interface
@@ -92,13 +81,20 @@ interface SolvedACProblem {
   }>;
 }
 
-// Upload data interface
-interface UploadData {
-  directory: string;
-  fileName: string;
-  message: string;
-  readme: string;
-  code: string;
+// ssafy.today로 전송할 문제 정보
+interface BaekjoonProblemInfo {
+  problemId: string;
+  title: string;
+  level: string;
+  language: string;
+  memory: string;
+  runtime: string;
+  submissionTime: string;
+  tags: string[];
+  problem_description: string;
+  problem_input: string;
+  problem_output: string;
+  link: string;
 }
 
 /**
@@ -241,22 +237,21 @@ export async function findProblemInfoAndSubmissionCode(
 }
 
 /**
- * Create detail message and readme for upload
+ * Build the problem info payload sent to ssafy.today
+ * Accepts both camelCase (from parsing) and snake_case inputs
  * @param data - Problem and submission data
- * @returns Upload data with directory, filename, message, and readme
+ * @returns Problem info, or null when required fields are missing
  */
-export async function makeDetailMessageAndReadme(data: Record<string, unknown>): Promise<UploadData | null> {
-  log.debug("makeDetailMessageAndReadme - input data:", data);
+export function buildProblemInfo(data: Record<string, unknown>): BaekjoonProblemInfo | null {
+  log.debug("buildProblemInfo - input data:", data);
 
   if (isNull(data)) {
-    log.error("makeDetailMessageAndReadme - data is null");
+    log.error("buildProblemInfo - data is null");
     return null;
   }
 
   // Support both old and new variable names
   const problemId = data.problemId as string;
-  const submissionId = data.submissionId as string;
-  const result = data.result as string | undefined;
   const title = data.title as string;
   const level = data.level as string;
   const problemTags = (data.problemTags || data.problem_tags || []) as string[];
@@ -271,7 +266,7 @@ export async function makeDetailMessageAndReadme(data: Record<string, unknown>):
 
   // Validate required data
   if (isNull(problemId) || isNull(title) || isNull(code) || isNull(language)) {
-    log.error("makeDetailMessageAndReadme - Missing required data:", {
+    log.error("buildProblemInfo - Missing required data:", {
       problemId,
       title,
       code: code ? "exists" : "null",
@@ -280,72 +275,19 @@ export async function makeDetailMessageAndReadme(data: Record<string, unknown>):
     return null;
   }
 
-  const score = parseNumberFromString(result || "");
-  const processedLanguage = langVersionRemove(language, null);
-  const languageExtension = getLanguageExtension(language);
-
-  // Prepare template data
-  const templateData = {
+  return {
     problemId,
     title,
-    level,
-    memory,
-    runtime,
-    languageExtension,
-  };
-
-  // Build base directory path using template
-  const baseDirPath = EnhancedTemplateService.parseTemplate(DEFAULT_DIR_TEMPLATES.baekjoon, templateData);
-
-  // Get directory from template
-  let directory: string;
-  try {
-    directory = await getDirNameByTemplate(baseDirPath, processedLanguage, {
-      problemId,
-      title,
-      level,
-      problemTags,
-      memory,
-      runtime,
-      submissionTime,
-      language: processedLanguage,
-      problemDescription,
-      problemInput,
-      problemOutput,
-    });
-  } catch (error) {
-    log.error("makeDetailMessageAndReadme - getDirNameByTemplate error:", error);
-    directory = baseDirPath;
-  }
-
-  // Build commit message using template
-  const messageTemplate = Number.isNaN(score)
-    ? DEFAULT_MESSAGE_TEMPLATES.baekjoon
-    : DEFAULT_MESSAGE_TEMPLATES.baekjoonWithScore;
-  const message = EnhancedTemplateService.parseTemplate(messageTemplate, { ...templateData, score });
-
-  const category = problemTags.join(", ");
-  const fileName = EnhancedTemplateService.parseTemplate(DEFAULT_FILENAME_TEMPLATE, templateData);
-  const dateInfo = submissionTime ?? toKoreanDateString();
-
-  // Build readme content using ReadmeBuilder
-  const readme = new ReadmeBuilder()
-    .addTitle(level, title, problemId)
-    .addProblemLink(`${urls.BAEKJOON_PROBLEM_URL}${problemId}`)
-    .addPerformance(`${memory} KB`, `${runtime} ms`)
-    .addTags(category || "Empty")
-    .addProblemDescription(problemDescription || "")
-    .addProblemInput(problemInput || "")
-    .addProblemOutput(problemOutput || "")
-    .addSubmissionDate(dateInfo || "")
-    .build();
-
-  return {
-    directory,
-    fileName,
-    message,
-    readme,
-    code,
+    level: level || "",
+    language,
+    memory: memory || "",
+    runtime: runtime || "",
+    submissionTime: submissionTime || "",
+    tags: problemTags,
+    problem_description: problemDescription || "",
+    problem_input: problemInput || "",
+    problem_output: problemOutput || "",
+    link: `${urls.BAEKJOON_PROBLEM_URL}${problemId}`,
   };
 }
 
@@ -421,14 +363,14 @@ export async function findData(inputData?: SubmissionData | null): Promise<Recor
     const mergedData = preProcessEmptyObj({ ...data, ...problemInfoAndCode });
     log.debug("findData - mergedData:", mergedData);
 
-    // Create detail info
-    const detail = await makeDetailMessageAndReadme(mergedData as Record<string, unknown>);
-    if (isNull(detail)) {
-      log.error("findData - Failed to create detail message and readme");
+    // Build the ssafy.today problem info payload
+    const problemInfo = buildProblemInfo(mergedData as Record<string, unknown>);
+    if (isNull(problemInfo)) {
+      log.error("findData - Failed to build problem info");
       return null;
     }
 
-    return { ...data, ...problemInfoAndCode, ...detail };
+    return { ...data, ...problemInfoAndCode, problemInfo };
   } catch (error) {
     log.error("findData - Error:", error);
     return null;

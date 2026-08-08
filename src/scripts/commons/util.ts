@@ -178,29 +178,6 @@ export function convertSingleCharToDoubleChar(text: string): string {
 }
 
 /**
- * Encode string to base64 with Unicode support
- * @param str - String to encode
- * @returns Base64 encoded string
- */
-export function b64EncodeUnicode(str: string): string {
-  return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_match, p1) => String.fromCharCode(parseInt(p1, 16))));
-}
-
-/**
- * Decode base64 string with Unicode support
- * @param b64str - Base64 string to decode
- * @returns Decoded string
- */
-export function b64DecodeUnicode(b64str: string): string {
-  return decodeURIComponent(
-    atob(b64str)
-      .split("")
-      .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
-      .join("")
-  );
-}
-
-/**
  * Parse first number from string
  * @param str - String to parse
  * @returns Parsed number or NaN
@@ -273,20 +250,6 @@ export function filter<T extends Record<string, unknown>>(
     }
     return true;
   });
-}
-
-/**
- * Calculate GitHub blob SHA
- * @param content - File content
- * @returns SHA hash
- */
-export async function calculateBlobSHA(content: string): Promise<string> {
-  const textEncoder = new TextEncoder();
-  const data = textEncoder.encode(`blob ${new Blob([content]).size}\0${content}`);
-  const hashBuffer = await crypto.subtle.digest("SHA-1", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hexHash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-  return hexHash;
 }
 
 /**

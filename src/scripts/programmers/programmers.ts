@@ -5,8 +5,7 @@
 import PlatformHubBase, { Toast, log, checkEnable, type UploadData } from "@/commons/platformhub-base";
 import { SubmissionChecker } from "@/commons/loader-service";
 import { parseData } from "@/programmers/parsing";
-import uploadOneSolveProblemOnGit from "@/programmers/uploadfunctions";
-import { startUpload, markUploadedCSS } from "@/programmers/util";
+import { startUpload } from "@/programmers/util";
 import { PLATFORMS } from "@/constants/config";
 import { initHintForProblem, cleanupHint } from "@/commons/hint-integration";
 
@@ -296,12 +295,7 @@ class ProgrammersHub extends PlatformHubBase {
     const checker = SubmissionChecker.createTextChecker("div.modal-header > h4", "정답");
 
     const onSuccess = async (): Promise<void> => {
-      const result = await this.createAndExecuteUploadHandler(
-        parseData,
-        uploadOneSolveProblemOnGit,
-        markUploadedCSS,
-        startUpload
-      );
+      const result = await this.createAndExecuteUploadHandler(parseData, startUpload);
 
       if (result?.success && result?.data) {
         // 라이브 페이지 우선, 저장값은 폴백 — 저장값 우선이면 프로그래머스 계정 전환 후
@@ -310,13 +304,7 @@ class ProgrammersHub extends PlatformHubBase {
         const storageResult = await chrome.storage.local.get(['platform_programmers_username']);
         const platformUsername = this.findUsername() || storageResult.platform_programmers_username || "";
 
-        // Use smartUpload for automatic routing (GitHub or ssafy.today direct)
-        await this.smartUpload(
-          result.data as UploadData,
-          uploadOneSolveProblemOnGit,
-          markUploadedCSS,
-          platformUsername
-        );
+        await this.smartUpload(result.data as UploadData, platformUsername);
       }
     };
 

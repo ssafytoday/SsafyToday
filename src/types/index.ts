@@ -10,13 +10,11 @@ export type {
   RetryLimits,
   ResultMessage,
   ResultMessages,
-  GitHubApiConfig,
   LogLevels,
   LogLevel,
   FileLimits,
   PlatformSelectors,
   Selectors,
-  Defaults,
 } from './config';
 
 // Platform types
@@ -45,40 +43,21 @@ export type {
   ParsedProblemData,
 } from './problem';
 
-// Upload types
+// Submission types
 export type {
-  UploadResult,
-  FileUploadInfo,
-  UploadCallback,
-  UploadFunction,
   UploadHandlerResult,
   ParseDataFunction,
-  MarkFunction,
   StartUploadFunction,
   UploadHandlerCreator,
 } from './upload';
 
 // Storage types
 export type {
-  StorageKeys,
   Stats,
   StorageData,
   StorageArea,
   BatchUpdate,
-  PathUpdate,
 } from './storage';
-
-// GitHub types
-export type {
-  GitHubReference,
-  GitHubTreeItem,
-  GitHubRepository,
-  GitHubCommit,
-  GitHubFileContent,
-  GitHubTreeResponse,
-  GitHubApiError,
-  IGitHub,
-} from './github';
 
 // Toast types
 export type {

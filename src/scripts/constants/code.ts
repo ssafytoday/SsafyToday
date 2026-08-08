@@ -1,24 +1,7 @@
 /**
  * Code-related constants for SsafyToday
- * Language mappings, difficulty levels, result categories
- *
- * NOTE: Baekjoon language mappings have been moved to a more flexible system.
- * See: @/baekjoon/languages.ts for the new language extension mapping system.
- * The new system supports:
- * - Automatic version stripping (e.g., "Python 3.11" -> "py")
- * - Pattern-based inference for unknown languages
- * - Easy addition of new languages without modifying core code
- * - Runtime language mapping additions
+ * Difficulty levels, result categories
  */
-
-// Language extension mappings (for platform-specific use)
-export interface LanguageMap {
-  [key: string]: string;
-}
-
-export interface PlatformLanguageMap {
-  swexpertacademy: LanguageMap;
-}
 
 // Baekjoon level mapping
 export interface BjLevelMap {
@@ -36,17 +19,6 @@ export interface ProgrammersLevelMap {
 }
 
 const code = {
-  // Platform-specific language mappings (non-Baekjoon platforms)
-  // For Baekjoon, use @/baekjoon/languages.ts instead
-  languages: {
-    swexpertacademy: {
-      c: "c",
-      "c++": "cpp",
-      python: "py",
-      java: "java",
-    } as LanguageMap,
-  } as PlatformLanguageMap,
-
   bjLevel: {
     0: "Unrated",
     1: "Bronze V",
@@ -211,4 +183,4 @@ const code = {
 export default code;
 
 // Named exports for individual access
-export const { languages, bjLevel, RESULT_CATEGORY, RESULT_MESSAGE, programmersLevels } = code;
+export const { bjLevel, RESULT_CATEGORY, RESULT_MESSAGE, programmersLevels } = code;

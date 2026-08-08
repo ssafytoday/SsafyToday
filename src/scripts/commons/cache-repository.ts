@@ -53,8 +53,6 @@ export class CacheRepository<T> {
     if (isNull(this.stats)) {
       this.stats = {
         version: "0.0.0",
-        branches: {},
-        submission: {},
         problems: {},
       };
     }

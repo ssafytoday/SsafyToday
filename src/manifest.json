@@ -37,9 +37,7 @@
   "host_permissions": [
     "https://www.acmicpc.net/",
     "https://school.programmers.co.kr/",
-    "https://github.com/",
     "https://swexpertacademy.com/",
-    "https://lab.ssafy.com/",
     "https://solved.ac/api/v3/*",
     "https://ssafy.today/*",
     "wss://ssafy.today/*"
@@ -66,16 +64,6 @@
         "scripts/commons/ssafy-verify.ts"
       ],
       "run_at": "document_start"
-    },
-    {
-      "matches": [
-        "https://github.com/*"
-      ],
-      "js": [
-        "scripts/commons/authorize.ts",
-        "scripts/github/github.ts"
-      ],
-      "run_at": "document_idle"
     },
     {
       "matches": [
@@ -110,15 +98,6 @@
       ],
       "js": [
         "scripts/swexpertacademy/swexpertacademy.ts"
-      ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "https://lab.ssafy.com/*"
-      ],
-      "js": [
-        "scripts/gitlab/gitlab.ts"
       ],
       "run_at": "document_idle"
     }

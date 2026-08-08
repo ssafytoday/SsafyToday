@@ -2,8 +2,7 @@
  * ssafy.today 전송 실패 제출의 재시도 큐
  *
  * 문제: 가입(플랫폼 계정 연동) 전에 문제를 풀면 POST /api/submissions/가
- * 404 USER_NOT_FOUND로 실패하는데, GitHub 경로는 SHA 캐시 때문에 같은 코드를
- * 다시 제출해도 전송이 재시도되지 않아 그 풀이가 영구 미기록으로 남는다.
+ * 404 USER_NOT_FOUND로 실패해 그 풀이가 영구 미기록으로 남는다.
  *
  * 해결: 실패한 SubmissionData를 chrome.storage.local에 보관했다가
  * (1) 플랫폼 페이지 로드(PlatformHubBase 생성자), (2) ssafy.today에서
@@ -89,7 +88,7 @@ async function mergeWriteQueue(snapshot: PendingEntry[], desired: PendingEntry[]
  */
 export async function enqueuePendingSubmission(data: SubmissionData): Promise<void> {
   try {
-    // 신원(플랫폼 사용자명·GitHub 사용자명)이 전혀 없는 페이로드는 어떤 재시도로도
+    // 신원(플랫폼 사용자명)이 전혀 없는 페이로드는 어떤 재시도로도
     // 성공할 수 없고, flush 시점 보충은 오귀속을 만들므로 하지 않는다 — 버린다.
     if (!data.platformUsername && !data.username) {
       log.debug("Skipping pending enqueue: no identity in payload");

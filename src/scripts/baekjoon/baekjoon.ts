@@ -9,12 +9,10 @@ import { TIMEOUTS, RETRY_LIMITS, RESULT_MESSAGES, PLATFORMS } from "@/constants/
 import {
   findUsername,
   startUpload,
-  markUploadedCSS,
   isExistResultTable,
   startMonitoringToast,
 } from "@/baekjoon/util";
 import { findData, parseProblemDescription, parsingResultTableList, getSolvedACById } from "@/baekjoon/parsing";
-import uploadOneSolveProblemOnGit from "@/baekjoon/uploadfunctions";
 import { initHintForProblem, cleanupHint } from "@/commons/hint-integration";
 
 // Submission data interface
@@ -281,43 +279,32 @@ class BaekjoonHub extends PlatformHubBase {
     };
 
     const onSuccess = async (): Promise<void> => {
-      log.info("풀이가 맞았습니다. 업로드를 시작합니다.");
+      log.info("풀이가 맞았습니다. 제출 기록 전송을 시작합니다.");
 
-      // Show upload start toast
+      // Show submission start toast
       startUpload();
 
       try {
         if (!table || isEmpty(table)) {
-          log.error("SsafyToday Debug - No table data available for upload");
+          log.error("SsafyToday Debug - No table data available for submission");
           return;
         }
 
         const data = table[0];
         log.debug("SsafyToday Debug - Processing submission data:", data);
 
-        // Create and execute upload handler
-        const bojData = await this.createAndExecuteUploadHandler(
-          () => findData(data),
-          uploadOneSolveProblemOnGit,
-          markUploadedCSS,
-          undefined
-        );
+        // Create and execute submission handler
+        const bojData = await this.createAndExecuteUploadHandler(() => findData(data));
 
         if (isNull(bojData)) {
-          log.error("SsafyToday Debug - Failed to get bojData, skipping upload.");
+          log.error("SsafyToday Debug - Failed to get bojData, skipping submission.");
           return;
         }
 
-        log.debug("SsafyToday Debug - Upload data prepared:", bojData);
-        // Use smartUpload for automatic routing (GitHub or ssafy.today direct)
-        await this.smartUpload(
-          bojData.data as UploadData,
-          uploadOneSolveProblemOnGit,
-          markUploadedCSS,
-          this.username || ""
-        );
+        log.debug("SsafyToday Debug - Submission data prepared:", bojData);
+        await this.smartUpload(bojData.data as UploadData, this.username || "");
       } catch (error) {
-        log.error("SsafyToday Debug - Error during upload process:", error);
+        log.error("SsafyToday Debug - Error during submission process:", error);
       }
     };
 

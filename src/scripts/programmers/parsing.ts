@@ -3,16 +3,8 @@
  * Handles problem description and submission code parsing
  */
 import { convertSingleCharToDoubleChar } from "@/commons/util";
-import EnhancedTemplateService from "@/commons/enhanced-template";
-import {
-  DEFAULT_DIR_TEMPLATES,
-  DEFAULT_MESSAGE_TEMPLATES,
-  DEFAULT_FILENAME_TEMPLATE,
-} from "@/constants/templates";
-import { nowISO, toKoreanDateString } from "@/commons/date-util";
-import { getDirNameByTemplate } from "@/commons/storage";
+import { nowISO } from "@/commons/date-util";
 import log from "@/commons/logger";
-import { ReadmeBuilder } from "@/commons/readme-builder";
 
 // Problem data interface for Programmers
 interface ProgrammersProblemOrigin {
@@ -21,7 +13,6 @@ interface ProgrammersProblemOrigin {
   level: string;
   resultMessage: string;
   division: string;
-  languageExtension: string;
   title: string;
   runtime: string;
   memory: string;
@@ -33,10 +24,6 @@ interface ProgrammersProblemOrigin {
 // Parsed problem data interface
 interface ParsedProblemData {
   problemId: string;
-  directory: string;
-  message: string;
-  fileName: string;
-  readme: string;
   code: string;
   // Fields needed for API submission
   title: string;
@@ -63,7 +50,6 @@ export async function makeData(origin: ProgrammersProblemOrigin): Promise<Parsed
     level,
     resultMessage,
     division,
-    languageExtension,
     title,
     runtime,
     memory,
@@ -72,63 +58,8 @@ export async function makeData(origin: ProgrammersProblemOrigin): Promise<Parsed
     link,
   } = origin;
 
-  // Convert level to display format (e.g., "1" -> "level 1", "lv1" -> "lv1")
-  const levelWithLv = `${level}`.includes("lv") ? level : `lv${level}`.replace("lv", "level ");
-
-  // Prepare template data
-  const templateData = {
-    problemId,
-    title,
-    level,
-    memory,
-    runtime,
-    languageExtension,
-  };
-
-  // Build base directory path using template
-  const baseDirPath = EnhancedTemplateService.parseTemplate(DEFAULT_DIR_TEMPLATES.programmers, templateData);
-
-  // Get directory from template
-  const directory = await getDirNameByTemplate(baseDirPath, language, {
-    problemId,
-    title,
-    level,
-    division,
-    memory,
-    runtime,
-    submissionTime: nowISO(),
-    language,
-    problemDescription,
-    resultMessage,
-    link,
-  });
-
-  // Build commit message and filename using templates
-  // Note: message uses levelWithLv for display purposes
-  const message = EnhancedTemplateService.parseTemplate(DEFAULT_MESSAGE_TEMPLATES.programmers, {
-    ...templateData,
-    level: levelWithLv,
-  });
-  const fileName = EnhancedTemplateService.parseTemplate(DEFAULT_FILENAME_TEMPLATE, templateData);
-  const dateInfo = toKoreanDateString();
-
-  const readme = new ReadmeBuilder()
-    .addTitle(levelWithLv, title, problemId)
-    .addProblemLink(link)
-    .addPerformance(memory, runtime)
-    .addSection("구분", division.replace("/", " > "))
-    .addSection("채점결과", resultMessage)
-    .addSubmissionDate(dateInfo)
-    .addProblemDescription(problemDescription)
-    .addSource("프로그래머스 코딩 테스트 연습", "https://school.programmers.co.kr/learn/challenges")
-    .build();
-
   return {
     problemId,
-    directory,
-    message,
-    fileName,
-    readme,
     code,
     // Fields needed for API submission
     title,
@@ -182,9 +113,6 @@ export async function parseData(): Promise<ParsedProblemData> {
 
   const descElement = document.querySelector("div.guide-section-description > div.markdown");
   const problemDescription = descElement?.innerHTML || "";
-
-  const editorTab = document.querySelector("div.editor > ul > li.nav-item > a") as HTMLElement | null;
-  const languageExtension = editorTab?.innerText?.split(".")[1] || "txt";
 
   // Try multiple methods to get the code
   let code = "";
@@ -344,7 +272,6 @@ export async function parseData(): Promise<ParsedProblemData> {
     title,
     problemDescription,
     division,
-    languageExtension,
     code,
     resultMessage,
     runtime,

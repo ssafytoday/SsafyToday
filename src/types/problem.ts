@@ -53,13 +53,9 @@ export type ProblemInfo =
   | GoormLevelProblemInfo
   | SWEAProblemInfo;
 
-// Problem data for upload
+// Problem data for submission
 export interface ProblemData {
   code: string;
-  readme: string;
-  directory: string;
-  fileName: string;
-  message: string;
   platform: string;
   problemInfo: ProblemInfo;
   [key: string]: string | ProblemInfo | undefined;

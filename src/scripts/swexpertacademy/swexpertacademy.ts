@@ -1,8 +1,7 @@
 import PlatformHubBase, { Toast, log, checkEnable, type UploadData } from "@/commons/platformhub-base";
 import { SubmissionChecker } from "@/commons/loader-service";
 import { parseCode, parseData, updateTextSourceEvent } from "@/swexpertacademy/parsing";
-import uploadOneSolveProblemOnGit from "@/swexpertacademy/uploadfunctions";
-import { startUpload, markUploadedCSS, getNickname } from "@/swexpertacademy/util";
+import { startUpload, getNickname } from "@/swexpertacademy/util";
 import { PLATFORMS } from "@/constants/config";
 import { initHintForProblem, cleanupHint } from "@/commons/hint-integration";
 
@@ -319,13 +318,7 @@ class SWExpertAcademyHub extends PlatformHubBase {
       const storageResult = await chrome.storage.local.get(['platform_swea_nickname']);
       const platformUsername = storageResult.platform_swea_nickname || getNickname() || "";
 
-      // Use smartUpload for automatic routing (GitHub or ssafy.today direct)
-      await this.smartUpload(
-        parsedData as unknown as UploadData,
-        uploadOneSolveProblemOnGit,
-        markUploadedCSS,
-        platformUsername
-      );
+      await this.smartUpload(parsedData as unknown as UploadData, platformUsername);
     } catch (error) {
       log.error("Error in SWEA parseAndUpload:", error);
     }

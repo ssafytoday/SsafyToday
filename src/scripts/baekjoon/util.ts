@@ -5,12 +5,9 @@
 import { parseNumberFromString, maxValuesGroupBykey, isNull } from "@/commons/util";
 import { uploadState, RESULT_CATEGORY } from "@/baekjoon/variables";
 import { parsingResultTableList } from "@/baekjoon/parsing";
-import { createUploadNotifications } from "@/commons/upload-notifications";
+import { markUploadStarted, markUploadCompleted } from "@/commons/shared-state";
 import { Toast } from "@/commons/toast";
 import log from "@/commons/logger";
-
-// Create notification service for Baekjoon
-const notifications = createUploadNotifications("백준", uploadState);
 
 // Submission data interface
 interface SubmissionData {
@@ -37,33 +34,20 @@ export function startMonitoringToast(): void {
 }
 
 /**
- * Show upload start notification
+ * Show submission start notification
  */
 export function startUpload(): void {
-  notifications.startUpload();
+  markUploadStarted(uploadState);
+  Toast.info("백준 제출 기록을 전송합니다!", 3000);
   log.debug("startUpload: Upload start toast displayed");
 }
 
 /**
- * Show upload success notification with GitHub link
- * @param branches - Branch info (repoName: branchName)
- * @param directory - Directory path
- */
-export function markUploadedCSS(branches: Record<string, string>, directory: string): void {
-  if (!directory) {
-    log.warn("markUploadedCSS called with undefined directory");
-    return;
-  }
-
-  notifications.markUploadSuccess(branches, directory);
-  log.debug("markUploadedCSS: Upload success toast displayed");
-}
-
-/**
- * Show upload failure notification
+ * Show submission failure notification
  */
 export function markUploadFailedCSS(): void {
-  notifications.markUploadFailed();
+  markUploadCompleted(uploadState);
+  Toast.danger("백준 제출 기록 전송 실패!", 6000);
   log.debug("markUploadFailedCSS: Upload failure toast displayed");
 }
 
@@ -246,21 +230,3 @@ export function convertResultTableHeader(header: string): string {
   }
 }
 
-/**
- * Remove version number from programming language name
- * @param lang - Language name with version
- * @param ignores - Set of languages to ignore (don't remove version)
- * @returns Language name without version
- */
-export function langVersionRemove(lang: string, ignores: Set<string> | null): string {
-  if (!lang) return "";
-
-  const ignoredLanguages = ignores || new Set(["PyPy3", "PyPy2", "node.js"]);
-
-  if (ignoredLanguages.has(lang)) {
-    return lang;
-  }
-
-  // Remove version numbers and dots (e.g., "Python 3.8" -> "Python", "Java 11" -> "Java")
-  return lang.replace(/\s+[\d.]+.*$/, "").trim();
-}

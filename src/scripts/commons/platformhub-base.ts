@@ -1,9 +1,8 @@
 /**
  * Base class for all platform hub implementations
- * Provides common functionality for submission monitoring and upload handling
+ * Provides common functionality for submission monitoring and submission handling
  */
-import { isNull, isEmpty, calculateBlobSHA, getVersion } from "@/commons/util";
-import { getStats, getHook, getToken, saveStats, updateLocalStorageStats, getStatsSHAfromPath } from "@/commons/storage";
+import { isEmpty } from "@/commons/util";
 import { Toast } from "@/commons/toast";
 import { checkEnable } from "@/commons/enable";
 import { LoaderFactory, LoaderService } from "@/commons/loader-service";
@@ -11,9 +10,9 @@ import UploadService, { UploadHandlerFactory } from "@/commons/upload-service";
 import { flushPendingSubmissions } from "@/commons/pending-submissions";
 import log from "@/commons/logger";
 import { TIMEOUTS, RETRY_LIMITS } from "@/constants/config";
-import type { PlatformConfig, CheckCondition, SuccessCallback } from "@/types/platform";
-import type { BaseProblemInfo, ProblemInfoMapper } from "@/types/problem";
-import type { UploadCallback, MarkFunction, ParseDataFunction, StartUploadFunction, UploadHandlerResult } from "@/types/upload";
+import type { CheckCondition, SuccessCallback } from "@/types/platform";
+import type { BaseProblemInfo } from "@/types/problem";
+import type { ParseDataFunction, StartUploadFunction, UploadHandlerResult } from "@/types/upload";
 
 // Re-export commonly used utilities for subclasses
 export { Toast, checkEnable, log };
@@ -28,16 +27,13 @@ interface PlatformHubConfig {
   };
   /**
    * Skip enable check for API submission
-   * When true, submission monitoring and upload will work even when extension is disabled
-   * Useful for platforms that want to submit to ssafy.today API regardless of GitHub integration status
+   * When true, submission monitoring and sending will work even when extension is disabled
    */
   skipEnableCheck?: boolean;
 }
 
-// Upload data interface
+// Submission data interface
 export interface UploadData {
-  directory: string;
-  fileName: string;
   code: string;
   platformUsername?: string;  // 플랫폼별 사용자명 (백준 ID, 프로그래머스 닉네임, SWEA 닉네임)
   [key: string]: unknown;
@@ -45,7 +41,7 @@ export interface UploadData {
 
 /**
  * Base class for all platform hub implementations
- * Provides common functionality for submission monitoring and upload handling
+ * Provides common functionality for submission monitoring and submission handling
  */
 export default class PlatformHubBase {
   protected loader: ReturnType<typeof setInterval> | null = null;
@@ -116,7 +112,7 @@ export default class PlatformHubBase {
         }
 
         if (await checkCondition()) {
-          log.info(`정답이 나왔습니다. ${this.config.platformName} 업로드를 시작합니다.`);
+          log.info(`정답이 나왔습니다. ${this.config.platformName} 제출 기록을 시작합니다.`);
           this.stopLoader();
           await onSuccess();
         }
@@ -147,23 +143,17 @@ export default class PlatformHubBase {
   }
 
   /**
-   * Generic upload handler creation and execution
+   * Generic submission handler creation and execution
    * @param parseDataFn - Data parsing function
-   * @param uploadFn - Upload function
-   * @param markFn - Mark uploaded function
-   * @param startUploadFn - Start upload function
+   * @param startUploadFn - Start function
    */
   async createAndExecuteUploadHandler(
     parseDataFn: ParseDataFunction,
-    uploadFn: unknown,
-    markFn: MarkFunction,
     startUploadFn?: StartUploadFunction
   ): Promise<UploadHandlerResult> {
     const uploadHandler = UploadHandlerFactory.create(
       this.config.platformName || "unknown",
       parseDataFn,
-      uploadFn,
-      markFn,
       startUploadFn
     );
 
@@ -181,73 +171,6 @@ export default class PlatformHubBase {
     if (this.loaderService) {
       this.loaderService.stop();
       this.loaderService = null;
-    }
-  }
-
-  /**
-   * Common upload logic for all platforms
-   * @param data - Parsed problem data
-   * @param uploadFunction - Platform-specific upload function
-   * @param markFunction - Platform-specific mark function
-   */
-  async beginUpload(
-    data: UploadData,
-    uploadFunction: (data: UploadData, callback: UploadCallback) => Promise<void>,
-    markFunction: MarkFunction
-  ): Promise<void> {
-    try {
-      log.debug(`${this.config.platformName} data:`, data);
-
-      if (isEmpty(data)) {
-        log.debug(`No data to upload for ${this.config.platformName}`);
-        return;
-      }
-
-      const [stats, hook] = await Promise.all([getStats(), getHook()]);
-      const currentVersion = stats.version;
-
-      const shouldUpdateVersion =
-        isNull(currentVersion) ||
-        currentVersion !== getVersion() ||
-        isNull(await getStatsSHAfromPath(hook || ""));
-
-      if (shouldUpdateVersion) {
-        await this.versionUpdate();
-      }
-
-      const filePath = `${hook}/${data.directory}/${data.fileName}`;
-      const [cachedSHA, calcSHA] = await Promise.all([
-        getStatsSHAfromPath(filePath),
-        calculateBlobSHA(data.code),
-      ]);
-
-      log.debug("cachedSHA", cachedSHA, "calcSHA", calcSHA);
-
-      if (cachedSHA === calcSHA) {
-        markFunction(stats.branches, data.directory);
-        log.info(`현재 제출번호를 업로드한 기록이 있습니다. (${this.config.platformName})`);
-        return;
-      }
-
-      await uploadFunction(data, markFunction);
-    } catch (error) {
-      log.error(`Error in ${this.config.platformName} upload:`, error);
-      Toast.raiseToast(`${this.config.platformName} 업로드 중 오류가 발생했습니다.`);
-    }
-  }
-
-  /**
-   * Update version information
-   */
-  async versionUpdate(): Promise<void> {
-    try {
-      log.info(`start versionUpdate for ${this.config.platformName}`);
-      const stats = await updateLocalStorageStats();
-      stats.version = getVersion();
-      await saveStats(stats);
-      log.debug("stats updated.", stats);
-    } catch (error) {
-      log.error(`Error updating version for ${this.config.platformName}:`, error);
     }
   }
 
@@ -290,49 +213,6 @@ export default class PlatformHubBase {
   }
 
   /**
-   * Create a generic upload function for platform-specific implementations
-   * This eliminates code duplication across platform upload functions
-   * @param platformName - Platform display name
-   * @param problemInfoMapper - Function to map problem data to platform-specific format
-   */
-  static createUploadFunction<T extends BaseProblemInfo>(
-    platformName: string,
-    problemInfoMapper?: ProblemInfoMapper<T>
-  ): (problemData: UploadData, callback: UploadCallback) => Promise<void> {
-    return async function uploadOneSolveProblemOnGit(
-      problemData: UploadData,
-      callback: UploadCallback
-    ): Promise<void> {
-      try {
-        const enhancedData = {
-          ...problemData,
-          platform: platformName,
-          platformUsername: problemData.platformUsername,  // 플랫폼별 사용자명 전달
-          problemInfo: problemInfoMapper
-            ? problemInfoMapper(problemData as unknown as Partial<T>)
-            : problemData.problemInfo,
-          readme: (problemData.readme as string) || "",
-          message: (problemData.message as string) || "",
-        };
-        await UploadService.uploadProblem(
-          enhancedData as unknown as {
-            code: string;
-            readme: string;
-            directory: string;
-            fileName: string;
-            message: string;
-            platformUsername?: string;
-          },
-          callback
-        );
-      } catch (error) {
-        log.error(`Error in ${platformName} upload function:`, error);
-        throw error;
-      }
-    };
-  }
-
-  /**
    * Retry operation with exponential backoff
    * @param operation - Async operation to retry
    * @param maxRetries - Maximum number of retries
@@ -360,17 +240,7 @@ export default class PlatformHubBase {
   }
 
   /**
-   * Check if GitHub authentication is available
-   * @returns True if user has GitHub OAuth token and hook configured
-   */
-  async hasGitHubAuth(): Promise<boolean> {
-    const [token, hook] = await Promise.all([getToken(), getHook()]);
-    return !isNull(token) && !isNull(hook) && token !== "" && hook !== "";
-  }
-
-  /**
-   * Send submission to ssafy.today only (without GitHub upload)
-   * Used when user has no GitHub authentication
+   * Send submission to ssafy.today
    *
    * @param data - Parsed problem data
    * @param platformUsername - Platform-specific username (백준 ID, 프로그래머스 닉네임, SWEA 닉네임)
@@ -380,7 +250,7 @@ export default class PlatformHubBase {
     platformUsername: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      log.debug(`${this.config.platformName} - Sending to ssafy.today only (no GitHub auth)`);
+      log.debug(`${this.config.platformName} - Sending to ssafy.today`);
 
       if (isEmpty(data)) {
         log.debug(`No data to send for ${this.config.platformName}`);
@@ -393,14 +263,9 @@ export default class PlatformHubBase {
         return { success: false, error: "Platform username not found" };
       }
 
-      // Convert UploadData to UploadProblemData format
       // problemInfo가 없으면 data에서 직접 필드 추출 (parseData가 flat 구조로 반환하는 경우)
       const problemData = {
         code: data.code,
-        readme: (data.readme as string) || "",
-        directory: data.directory,
-        fileName: data.fileName,
-        message: (data.message as string) || "",
         platform: this.config.platformName,
         problemInfo: (data.problemInfo as BaseProblemInfo | undefined) || {
           problemId: data.problemId as string,
@@ -412,14 +277,14 @@ export default class PlatformHubBase {
           submissionTime: data.submissionTime as string,
           link: data.link as string,
           length: data.length as string,
-          // parseData가 flat 구조로 반환하는 플랫폼별 필드 — 여기서 빠지면 GitHub
-          // 미연동 직접 전송(sendToSsafyTodayDirect)에서 division/resultMessage 등이
-          // 항상 빈 값으로 백엔드에 저장된다
+          // parseData가 flat 구조로 반환하는 플랫폼별 필드 — 여기서 빠지면
+          // division/resultMessage 등이 항상 빈 값으로 백엔드에 저장된다
           division: data.division as string,
           result_message: data.result_message as string,
           problem_description: data.problem_description as string,
           problem_input: data.problem_input as string,
           problem_output: data.problem_output as string,
+          tags: data.tags as string[],
         },
       };
 
@@ -440,35 +305,18 @@ export default class PlatformHubBase {
   }
 
   /**
-   * Smart upload - routes to GitHub or ssafy.today based on authentication status
+   * Send a parsed submission to ssafy.today
    *
    * @param data - Parsed problem data
-   * @param uploadFunction - Platform-specific upload function (used for GitHub)
-   * @param markFunction - Platform-specific mark function (used for GitHub)
-   * @param platformUsername - Platform-specific username for ssafy.today direct upload
+   * @param platformUsername - Platform-specific username for ssafy.today
    */
-  async smartUpload(
-    data: UploadData,
-    uploadFunction: (data: UploadData, callback: UploadCallback) => Promise<void>,
-    markFunction: MarkFunction,
-    platformUsername: string
-  ): Promise<void> {
-    const hasAuth = await this.hasGitHubAuth();
-
+  async smartUpload(data: UploadData, platformUsername: string): Promise<void> {
     // platformUsername을 data에 주입하여 ssafy.today 전송 시 사용
     const dataWithUsername: UploadData = {
       ...data,
       platformUsername: platformUsername,
     };
 
-    if (hasAuth) {
-      // GitHub 인증 있음: 기존 흐름 (GitHub 업로드 → ssafy.today 자동 전송)
-      log.info(`${this.config.platformName} - GitHub auth available, using full upload flow`);
-      await this.beginUpload(dataWithUsername, uploadFunction, markFunction);
-    } else {
-      // GitHub 인증 없음: ssafy.today로만 전송
-      log.info(`${this.config.platformName} - No GitHub auth, sending to ssafy.today directly`);
-      await this.sendToSsafyTodayOnly(dataWithUsername, platformUsername);
-    }
+    await this.sendToSsafyTodayOnly(dataWithUsername, platformUsername);
   }
 }

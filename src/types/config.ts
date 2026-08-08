@@ -7,7 +7,6 @@ export interface Timeouts {
   readonly RETRY_DELAY: number;
   readonly LOADER_INTERVAL: number;
   readonly USERNAME_RETRY: number;
-  readonly STORAGE_BATCH_FLUSH: number;
   readonly API_RETRY_BASE: number;
   readonly MAX_RETRY_WAIT: number;
 }
@@ -30,14 +29,6 @@ export interface ResultMessages {
   readonly PROGRAMMERS: ResultMessage;
   readonly SWEXPERTACADEMY: ResultMessage;
   readonly GOORMLEVEL: ResultMessage;
-}
-
-// GitHub API configurations
-export interface GitHubApiConfig {
-  readonly RATE_LIMIT_HEADER: string;
-  readonly RATE_LIMIT_RESET: string;
-  readonly ACCEPT_HEADER: string;
-  readonly MAX_TREE_SIZE: number;
 }
 
 // Log levels
@@ -67,13 +58,4 @@ export interface PlatformSelectors {
 export interface Selectors {
   readonly BAEKJOON: PlatformSelectors;
   readonly PROGRAMMERS: PlatformSelectors;
-}
-
-// Default values
-export interface Defaults {
-  readonly BRANCH: string;
-  readonly COMMIT_MESSAGE_PREFIX: string;
-  readonly COMMIT_MESSAGE_SUFFIX: string;
-  readonly README_FILENAME: string;
-  readonly LOG_LEVEL: LogLevel;
 }

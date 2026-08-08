@@ -3,26 +3,16 @@
  * Handles problem description and submission code parsing
  */
 import { isNull } from "@/commons/util";
-import EnhancedTemplateService from "@/commons/enhanced-template";
-import {
-  DEFAULT_DIR_TEMPLATES,
-  DEFAULT_MESSAGE_TEMPLATES,
-  DEFAULT_FILENAME_TEMPLATE,
-} from "@/constants/templates";
 import { getProblemData, updateProblemData, flushProblemCache } from "@/swexpertacademy/storage";
-import { languages } from "@/swexpertacademy/variables";
 import { getNickname } from "@/swexpertacademy/util";
-import { getDirNameByTemplate } from "@/commons/storage";
 import urls from "@/constants/url";
 import log from "@/commons/logger";
-import { ReadmeBuilder } from "@/commons/readme-builder";
 
 // Problem origin data interface
 interface SWEAProblemOrigin {
   link: string;
   problemId: string;
   level: string;
-  languageExtension: string;
   title: string;
   runtime: string;
   memory: string;
@@ -35,10 +25,6 @@ interface SWEAProblemOrigin {
 // Parsed problem data interface
 interface ParsedProblemData {
   problemId: string;
-  directory: string;
-  message: string;
-  fileName: string;
-  readme: string;
   code: string;
   // Fields needed for API submission
   title: string;
@@ -109,7 +95,6 @@ export async function makeData(origin: SWEAProblemOrigin): Promise<ParsedProblem
     link,
     problemId,
     level,
-    languageExtension,
     title,
     runtime,
     memory,
@@ -125,51 +110,8 @@ export async function makeData(origin: SWEAProblemOrigin): Promise<ParsedProblem
       ? language.substring(0, 1) + language.substring(1).toLowerCase()
       : language;
 
-  // Prepare template data
-  const templateData = {
-    problemId,
-    title,
-    level,
-    memory,
-    runtime,
-    languageExtension,
-  };
-
-  // Build base directory path using template
-  const baseDirPath = EnhancedTemplateService.parseTemplate(DEFAULT_DIR_TEMPLATES.swea, templateData);
-
-  // Get directory from template
-  const directory = await getDirNameByTemplate(baseDirPath, lang, {
-    problemId,
-    title,
-    level,
-    memory,
-    runtime,
-    submissionTime,
-    language: lang,
-    length,
-    link,
-  });
-
-  // Build commit message and filename using templates
-  const message = EnhancedTemplateService.parseTemplate(DEFAULT_MESSAGE_TEMPLATES.swea, templateData);
-  const fileName = EnhancedTemplateService.parseTemplate(DEFAULT_FILENAME_TEMPLATE, templateData);
-  const dateInfo = submissionTime;
-
-  const readme = new ReadmeBuilder()
-    .addTitle(level, title, problemId)
-    .addProblemLink(urls.SWEA_PROBLEM_DETAIL_URL)
-    .addPerformance(memory, runtime, `${length} Bytes`)
-    .addSubmissionDate(dateInfo)
-    .addSource("SW Expert Academy", "https://swexpertacademy.com/main/code/problem/problemList.do")
-    .build();
-
   return {
     problemId,
-    directory,
-    message,
-    fileName,
-    readme,
     code,
     // Fields needed for API submission
     title,
@@ -372,9 +314,6 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
   const runtime = runtimeElement.textContent?.trim() || "";
   const length = lengthElement.textContent?.trim() || "";
 
-  // File extension
-  const languageExtension = languages[language.toLowerCase()] || "txt";
-
   // Submission time — SolvingClub에서는 내 블록의 dl.smt_txt에서 읽는다
   const submissionTimeElement = entryScope.querySelector(".smt_txt > dd");
   if (!submissionTimeElement) {
@@ -405,7 +344,6 @@ export async function parseData(): Promise<ParsedProblemData | undefined> {
     problemId,
     level,
     title,
-    languageExtension,
     code,
     runtime,
     memory,

@@ -4,9 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 정체 (SsafyToday 크롬 익스텐션)
 
-BaekjoonHub 포크를 리브랜딩한 **Chrome MV3 확장** (`name: SsafyToday`). 원래 목적(GitHub
-자동 푸시)에 더해 **SSAFY 백엔드(`ssafy.today`) 연동 — 제출 기록 전송 · 플랫폼 계정 동기화 ·
-AI 힌트**가 얹혀 있다.
+BaekjoonHub 포크를 리브랜딩한 **Chrome MV3 확장** (`name: SsafyToday`). 유일한 목적은
+**SSAFY 백엔드(`ssafy.today`) 연동 — 제출 기록 전송 · 플랫폼 계정 동기화 · AI 힌트**다.
+
+- **git 연동은 2026-08-06 전면 제거됐다.** 포크 원본의 GitHub 자동 푸시(OAuth·GitHub API·
+  저장소 커밋·README/디렉토리/커밋 메시지 템플릿·SHA 기반 중복 제출 방지)와 GitHub/GitLab
+  사용자명 캡처가 모두 삭제됐다. 삭제 전 상태가 필요하면 `git show <이 변경 직전 커밋>`.
+  → 그 결과 `sync-credentials` 페이로드는 **`baekjoon`·`programmers`·`swea` 3키뿐**이고,
+  `User.github_username`/`gitlab_username`은 익스텐션이 더 이상 채우지 않는다
+  (백엔드는 키가 없으면 기존 값을 건드리지 않으므로 기존 사용자 데이터는 보존).
 
 - **별도 git 리포**다: 리모트 `github.com/ssafytoday/SsafyToday`. `C:\srv` 모노리포
   (`getCurrentThread/ssafy-srv`)는 이 폴더를 **의도적으로 추적하지 않는다**(untracked).
@@ -25,8 +31,8 @@ AI 힌트**가 얹혀 있다.
 
 | 요청 | 인증 | 소스 | 백엔드 계약 |
 |------|------|------|------------|
-| `POST /api/submissions/` | **비인증** — body의 `platformUsername`을 `User.*_username`과 exact 매칭 | `ssafy-api.ts`, `upload-service.ts` | `docs/contract/apis-extension.md` |
-| `POST /api/accounts/sync-credentials/` | **세션 쿠키 + CSRF** — `X-CSRFToken` 헤더 필수(csrftoken 쿠키 값), 로그인 감지는 `GET /api/accounts/auth/check/` | `ssafy-verify.ts` | `docs/contract/auth-session.md §2.3` |
+| `POST /api/submissions/` | **비인증** — body의 `platformUsername`을 `User.*_username`과 exact 매칭 (`username`은 항상 빈 문자열, `metadata`는 `extensionVersion`+`timestamp`뿐) | `ssafy-api.ts`, `upload-service.ts` | `docs/contract/apis-extension.md` |
+| `POST /api/accounts/sync-credentials/` | **세션 쿠키 + CSRF** — `X-CSRFToken` 헤더 필수(csrftoken 쿠키 값), 로그인 감지는 `GET /api/accounts/auth/check/`. 페이로드는 `baekjoon`·`programmers`·`swea` 3키 | `ssafy-verify.ts` | `docs/contract/auth-session.md §2.3` |
 | `POST /ssafytoday/v1/chat/completions` (SSE) | 비인증 | `hint-websocket.ts`(이름과 달리 HTTP SSE) | `docs/contract/realtime.md §3` |
 
 - 인증 정합 주의: `sync-credentials`는 세션 인증된 POST라 **CSRF 헤더가 없으면 항상 403**.
@@ -39,7 +45,10 @@ AI 힌트**가 얹혀 있다.
   chat.completions 형태를 재현한다. **익스텐션은 무수정** — 요청/응답 형태 동일.
 - 제출 사슬: 학생이 플랫폼에서 문제를 풀면 content script가 사용자명·제출을 캡처 →
   `sync-credentials`로 `User`에 플랫폼 계정 연동 → 이후 제출이 `platformUsername` 매칭으로
-  기록된다. 연동이 안 돼 있으면 `POST /api/submissions/`가 404 USER_NOT_FOUND.
+  기록된다. 연동이 안 돼 있으면 `POST /api/submissions/`가 404 USER_NOT_FOUND
+  (이 경우 `pending-submissions.ts` 큐에 쌓였다가 연동 직후 재전송된다).
+- **중복 제출 방지 없음**: git 제거와 함께 SHA 캐시 기반 중복 가드도 삭제됐다(사용자 결정).
+  정답 페이지를 새로고침하거나 여러 탭에서 열면 같은 제출이 반복 POST될 수 있다.
 
 ## 빌드 · 배포
 
@@ -103,10 +112,15 @@ npm run package   # build + build.mjs → packages/SsafyToday-v{version}.zip
 
 ```
 src/
-├── manifest.json           # MV3, content_scripts 대상: ssafy.today·acmicpc·programmers·swea·github·lab.ssafy
+├── manifest.json           # MV3, content_scripts 대상: ssafy.today·acmicpc·programmers·swea (4개)
 ├── scripts/
 │   ├── commons/            # 백엔드 연동 핵심: ssafy-api·ssafy-verify·hint-websocket·upload-service·platformhub-base
-│   ├── baekjoon/ programmers/ swexpertacademy/ github/ gitlab/   # 플랫폼별 파서·수집기
+│   ├── baekjoon/ programmers/ swexpertacademy/   # 플랫폼별 파서·수집기
 │   └── constants/ (url·config·registry)
 build.mjs                   # dist/ → packages/SsafyToday-v{version}.zip (fflate)
 ```
+
+- 제출 경로는 `<플랫폼>.ts` → `parsing.ts` → `PlatformHubBase.smartUpload` →
+  `UploadService.sendToSsafyTodayDirect` → `POST /api/submissions/` 한 갈래뿐이다.
+- `npm run lint`는 **TS 마이그레이션 이전부터 깨져 있다** — `eslint.config.js`가 `**/*.js`만
+  대상으로 잡아 "all files ignored"로 실패한다. 검증은 `npm run build`(tsc + vite)로 한다.
