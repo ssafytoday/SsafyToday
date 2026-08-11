@@ -40,6 +40,8 @@ interface PendingEntry {
 
 // 페이지 로드당 1회만 flush (여러 훅에서 불려도 중복 실행 방지)
 let flushedThisPageLoad = false;
+// 실행 중 재진입 방지 — force가 페이지 로드 가드를 넘을 수 있게 되면서 필요해졌다
+let flushInProgress = false;
 
 async function readQueue(): Promise<PendingEntry[]> {
   try {
@@ -110,11 +112,19 @@ export async function enqueuePendingSubmission(data: SubmissionData): Promise<vo
 /**
  * 큐의 제출들을 재전송. 성공(중복 포함)·INVALID_REQUEST(영구 실패)는 제거,
  * USER_NOT_FOUND(아직 미연동)는 시도 횟수 소모 없이 보존, 그 외 실패는 카운트.
- * @param options.force 재시도 간격(30분)을 무시하고 전부 시도 — 계정 연동 직후용
+ * @param options.force 재시도 간격(30분)과 **페이지 로드당 1회 가드**를 모두 무시하고
+ *   전부 시도 — 계정 연동/복구가 방금 성립한 순간용.
+ *
+ *   force가 페이지 로드 가드까지 넘는 이유: ssafy.today 진입 시 자동 sync가 이미
+ *   한 번 flush를 태우므로, 그 뒤 사용자가 연동을 고쳐도 가드에 막혀 재전송이
+ *   조용히 no-op이 됐다(2026-08-11 실측). 연동이 바뀐 직후가 재전송이 성공하는
+ *   유일한 순간이라 여기서 막히면 밀린 제출이 30분 뒤 다른 페이지 로드까지 방치된다.
  */
 export async function flushPendingSubmissions(options: { force?: boolean } = {}): Promise<void> {
-  if (flushedThisPageLoad) return;
+  if (flushedThisPageLoad && !options.force) return;
+  if (flushInProgress) return;
   flushedThisPageLoad = true;
+  flushInProgress = true;
 
   try {
     const now = Date.now();
@@ -169,5 +179,7 @@ export async function flushPendingSubmissions(options: { force?: boolean } = {})
     log.info(`Pending submission flush done, ${kept.length + survivors.length} left in queue`);
   } catch (e) {
     log.warn("Failed to flush pending submissions:", e);
+  } finally {
+    flushInProgress = false;
   }
 }

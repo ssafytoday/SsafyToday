@@ -17,9 +17,8 @@ BaekjoonHub 포크를 리브랜딩한 **Chrome MV3 확장** (`name: SsafyToday`)
 - **별도 git 리포**다: 리모트 `github.com/ssafytoday/SsafyToday`. `C:\srv` 모노리포
   (`getCurrentThread/ssafy-srv`)는 이 폴더를 **의도적으로 추적하지 않는다**(untracked).
   이 리포 변경은 여기서 따로 커밋·푸시한다 — 모노리포 커밋에 섞지 않는다.
-- **버전**: `package.json`·`src/manifest.json` 모두 `3.x` (현재 3.5.x). 단 git 태그는
-  `v1.2.8`에서 끊겨 있고 **`v3.x` 태그가 없다** — 3.x 릴리스는 태그 트리거 Action을
-  거치지 않고 배포됐다는 뜻(아래 배포 절 참조).
+- **버전**: `package.json`·`src/manifest.json` 모두 `3.x` (현재 3.5.x). 작업 브랜치는
+  `develop`이고 `v3.5.4`부터는 그 HEAD에 `v3.5.x` 태그를 달아 릴리스한다.
 - **`README.md`는 갱신 안 된 옛 BaekjoonHub 문서**다(GitHub 동기화만 설명, ssafy.today
   연동·AI 힌트 언급 없음, 스토어 링크도 원조 BaekjoonHub 것). **신뢰하지 말 것.**
   실제 연동 계약은 `ssafy-advisor/docs/contract/`가 소스 오브 트루스.
@@ -47,6 +46,31 @@ BaekjoonHub 포크를 리브랜딩한 **Chrome MV3 확장** (`name: SsafyToday`)
   `sync-credentials`로 `User`에 플랫폼 계정 연동 → 이후 제출이 `platformUsername` 매칭으로
   기록된다. 연동이 안 돼 있으면 `POST /api/submissions/`가 404 USER_NOT_FOUND
   (이 경우 `pending-submissions.ts` 큐에 쌓였다가 연동 직후 재전송된다).
+
+- ⚠️ **백준(acmicpc.net)은 2026-04-28자로 채점 서비스를 종료했다.** 모든 경로가
+  "BOJ 채점 서비스 준비 중" 안내 페이지로 대체돼 `findUsername()`·`#status-table`이
+  전부 없다 — `baekjoon.ts`는 "Could not find username after multiple retries"를 남기고
+  조용히 끝난다(정상). 백엔드 로그도 `백준` 제출이 2026-04-27을 마지막으로 0건이다.
+  **이건 익스텐션 버그가 아니다** — 백준 파서를 "고치려" 들지 말 것.
+
+- **연동 불일치(stale link) 복구 — v3.5.9 신설.** 등록된 플랫폼 계정명과 플랫폼 화면이
+  보여주는 값이 어긋나면(닉네임 변경·다른 계정 로그인·가입 시 오기입) 제출이 **매번**
+  404 USER_NOT_FOUND로 떨어지는데, `sync-credentials`가 **채움 전용**이라 자가 복구가
+  아예 불가능했다. 학생에겐 플랫폼 페이지의 붉은 토스트만 잠깐 보이고 ssafy.today는
+  "연동됨 ✓"으로 표시돼(setup 페이지는 DB 값을 보여준다) 원인 파악이 사실상 불가능했다.
+  - 서버는 이제 어긋난 필드를 `mismatched: {<model_field>: {stored, incoming}}` 로 **보고**하고,
+    요청에 `repair`(true 또는 짧은 키 배열)가 있을 때만 덮어쓴다
+    (`ssafy-advisor/docs/contract/auth-session.md §2.3`).
+  - `ssafy-verify.ts`가 그 보고를 받아 ssafy.today 우하단에 배너를 띄우고
+    (`#ssafy-today-link-mismatch`), **사용자가 "연동 고치기"를 눌렀을 때만** `repair`를 보낸다.
+    자동으로 덮어쓰지 않는 이유는 공유 브라우저에서 남의 플랫폼 세션 값이 내 계정에
+    연동되는 오염을 막기 위해서다(2026-07-17 서버 정책). 프론트가 자체 UI를 붙일 수 있게
+    `SSAFY_TODAY_LINK_MISMATCH` / `SSAFY_TODAY_REPAIR_LINK` / `SSAFY_TODAY_REPAIR_RESULT`
+    postMessage 채널도 열어 뒀다.
+  - 복구 성공 직후 `flushPendingSubmissions({force: true})`로 밀린 제출을 재전송한다.
+    이때 `force`는 재시도 간격(30분)뿐 아니라 **페이지 로드당 1회 가드**도 넘긴다 —
+    ssafy.today 진입 시 자동 sync가 이미 flush를 한 번 태우므로, 넘기지 않으면 복구 직후
+    재전송이 조용히 no-op이 된다(2026-08-11 실측으로 잡은 버그).
 - **SWEA는 결과 페이지로 이동하지 않는다**(v3.5.8, 업스트림 BaekjoonHub `e473954` 이식).
   정답 팝업을 감지하면 `problemSolver.do`/`problemPassedUser.do`를 **fetch + DOMParser**로
   읽어 풀이 화면(`solvingProblem.do`)에서 파싱·전송까지 끝낸다(`tryUploadInPlace`).

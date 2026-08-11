@@ -70,9 +70,10 @@ export default class UploadService {
           division: info?.division || "",
           resultMessage: info?.result_message || "",
         };
-      } else if (platform === "SW Expert Academy") {
-        // PLATFORMS.SWEXPERTACADEMY 값과 일치해야 한다 — 과거 "SWEA" 리터럴은
-        // 죽은 분기라 length가 항상 누락됐다
+      } else if (platform === "SWEA" || platform === "SW Expert Academy") {
+        // SWEA 허브는 platformName을 "SWEA"로 넘긴다(백엔드 platform 값과 동일).
+        // "SW Expert Academy"(PLATFORMS.SWEXPERTACADEMY)만 보던 과거 분기는
+        // 죽어 있어서 length가 항상 누락됐다 — 두 표기를 모두 받는다.
         platformSpecificData = {
           length: info?.length || "",
         };
