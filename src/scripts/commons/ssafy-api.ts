@@ -15,6 +15,11 @@ const SSAFY_API_URL = "https://ssafy.today/api/submissions/";
 export interface SubmissionData {
   username: string; // 하위 호환용 — 항상 빈 문자열 (백엔드는 platformUsername으로 매칭)
   platformUsername?: string; // 플랫폼별 사용자명 (백준 ID, 프로그래머스 닉네임, SWEA 닉네임)
+  // ssafy.today 로그인 계정 — 백엔드 사용자 조회의 **1순위** 폴백 신원.
+  // 플랫폼 닉네임이 어긋나도(연동 불일치) 제출이 주인을 찾게 한다.
+  // 백엔드 계약: apis-extension.md §3.1(2026-08-11 추가, 없으면 기존 사슬 그대로)
+  ssafyUsername?: string;
+  ssafyEmail?: string;
   platform: string; // '백준' | '프로그래머스' | 'SWEA'
   problemData: {
     // 공통 필수 필드

@@ -11,9 +11,9 @@
  * 정상 동작한다 (중복이면 200 duplicate → 큐에서 제거).
  *
  * 설계 원칙:
- * - 신원은 제출 시점에 고정한다. flush 시점의 저장 사용자명으로 빈
- *   platformUsername을 보충하지 않는다 — 공유 PC·계정 전환에서 남의 계정으로
- *   코드가 귀속된다. 신원 없는 페이로드는 큐에 넣지 않는다.
+ * - 신원은 제출 시점에 고정한다. flush 시점의 저장 사용자명·계정으로 빈
+ *   platformUsername/ssafyUsername을 보충하지 않는다 — 공유 PC·계정 전환에서
+ *   남의 계정으로 코드가 귀속된다. 신원 없는 페이로드는 큐에 넣지 않는다.
  * - USER_NOT_FOUND(미가입/미연동)는 큐의 존재 이유이므로 시도 횟수를 소모하지
  *   않는다. 30일 수명(MAX_AGE_MS)만 적용된다.
  * - 저장소 쓰기는 항상 병합(mergeWriteQueue) — flush가 네트워크 전송 중인 동안
@@ -90,9 +90,9 @@ async function mergeWriteQueue(snapshot: PendingEntry[], desired: PendingEntry[]
  */
 export async function enqueuePendingSubmission(data: SubmissionData): Promise<void> {
   try {
-    // 신원(플랫폼 사용자명)이 전혀 없는 페이로드는 어떤 재시도로도
-    // 성공할 수 없고, flush 시점 보충은 오귀속을 만들므로 하지 않는다 — 버린다.
-    if (!data.platformUsername && !data.username) {
+    // 신원(플랫폼 사용자명 또는 ssafy.today 계정)이 전혀 없는 페이로드는 어떤
+    // 재시도로도 성공할 수 없고, flush 시점 보충은 오귀속을 만들므로 하지 않는다 — 버린다.
+    if (!data.platformUsername && !data.username && !data.ssafyUsername && !data.ssafyEmail) {
       log.debug("Skipping pending enqueue: no identity in payload");
       return;
     }

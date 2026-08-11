@@ -7,6 +7,7 @@ import { toISOString } from "./date-util";
 import log from "@/commons/logger";
 import { SsafyAPIService, type SubmissionData } from "./ssafy-api";
 import { enqueuePendingSubmission } from "./pending-submissions";
+import { getSsafyAccount } from "./ssafy-account";
 import type { BaseProblemInfo } from "@/types/problem";
 import type { UploadHandlerResult, ParseDataFunction, StartUploadFunction } from "@/types/upload";
 
@@ -79,9 +80,16 @@ export default class UploadService {
         };
       }
 
+      // ssafy.today 계정을 함께 실어 보낸다 — 플랫폼 닉네임이 어긋나 있어도
+      // 백엔드가 이 계정으로 먼저 주인을 찾는다(닉네임 폴백은 그대로 유지).
+      // 미방문·로그아웃이면 빈 값이라 예전과 똑같이 닉네임만으로 매칭된다.
+      const account = await getSsafyAccount();
+
       const submissionData: SubmissionData = {
         username: "",
         platformUsername: platformUsername,
+        ssafyUsername: account.username,
+        ssafyEmail: account.email,
         platform: platform,
         problemData: {
           ...problemDataBase,

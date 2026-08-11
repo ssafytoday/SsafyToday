@@ -6,6 +6,7 @@
 
 // manifest.json에서 버전을 동적으로 로드
 import { flushPendingSubmissions } from './pending-submissions';
+import { clearSsafyAccount, saveSsafyAccount } from './ssafy-account';
 
 const manifest = chrome.runtime.getManifest();
 const EXTENSION_VERSION = manifest.version;
@@ -82,13 +83,23 @@ async function getCredentialsForAPI() {
 // 로그인 상태 확인 — 서버 세션을 직접 조회한다.
 // (기존 DOM 셀렉터 휴리스틱은 Vue3 프론트 마크업과 맞지 않아 항상 미로그인으로 오판했음)
 // auth/check/는 인증/비인증 모두 200 + {authenticated: bool} JSON을 반환한다.
+// 부수효과: 응답의 계정(username·email)을 캐시한다. 플랫폼 페이지의 제출 전송은
+// 비인증이라 쿠키를 못 쓰고, 플랫폼 닉네임이 어긋나면 제출이 유실된다 —
+// 그때 주인을 찾아 주는 폴백 신원이다 (ssafy-account.ts 참조).
+// 로그아웃이 확인되면 즉시 비운다(공유 PC 오귀속 방지).
 async function isLoggedIn(): Promise<boolean> {
   try {
     const response = await fetch(AUTH_CHECK_URL, { credentials: 'include' });
     if (!response.ok) return false;
     const data = await response.json();
-    return data?.authenticated === true;
+    if (data?.authenticated === true) {
+      await saveSsafyAccount(data?.user?.username, data?.user?.email);
+      return true;
+    }
+    await clearSsafyAccount();
+    return false;
   } catch {
+    // 네트워크 오류는 로그아웃이 아니다 — 캐시를 지우지 않는다
     return false;
   }
 }

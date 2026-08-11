@@ -30,7 +30,7 @@ BaekjoonHub 포크를 리브랜딩한 **Chrome MV3 확장** (`name: SsafyToday`)
 
 | 요청 | 인증 | 소스 | 백엔드 계약 |
 |------|------|------|------------|
-| `POST /api/submissions/` | **비인증** — body의 `platformUsername`을 `User.*_username`과 exact 매칭 (`username`은 항상 빈 문자열, `metadata`는 `extensionVersion`+`timestamp`뿐) | `ssafy-api.ts`, `upload-service.ts` | `docs/contract/apis-extension.md` |
+| `POST /api/submissions/` | **비인증** — body의 `ssafyUsername`/`ssafyEmail`(1순위) 또는 `platformUsername`(폴백)로 사용자 매칭 (`username`은 항상 빈 문자열, `metadata`는 `extensionVersion`+`timestamp`뿐) | `ssafy-api.ts`, `upload-service.ts`, `ssafy-account.ts` | `docs/contract/apis-extension.md` |
 | `POST /api/accounts/sync-credentials/` | **세션 쿠키 + CSRF** — `X-CSRFToken` 헤더 필수(csrftoken 쿠키 값), 로그인 감지는 `GET /api/accounts/auth/check/`. 페이로드는 `baekjoon`·`programmers`·`swea` 3키 | `ssafy-verify.ts` | `docs/contract/auth-session.md §2.3` |
 | `POST /ssafytoday/v1/chat/completions` (SSE) | 비인증 | `hint-websocket.ts`(이름과 달리 HTTP SSE) | `docs/contract/realtime.md §3` |
 
@@ -46,6 +46,17 @@ BaekjoonHub 포크를 리브랜딩한 **Chrome MV3 확장** (`name: SsafyToday`)
   `sync-credentials`로 `User`에 플랫폼 계정 연동 → 이후 제출이 `platformUsername` 매칭으로
   기록된다. 연동이 안 돼 있으면 `POST /api/submissions/`가 404 USER_NOT_FOUND
   (이 경우 `pending-submissions.ts` 큐에 쌓였다가 연동 직후 재전송된다).
+
+- **계정 폴백 신원 — v3.5.10 신설.** 제출 전송은 비인증이라 플랫폼 페이지에서는
+  신원이 플랫폼 닉네임뿐이었고, 닉네임이 어긋나면 제출이 매번 유실됐다. 이제
+  ssafy.today 방문 시 `auth/check/` 응답의 `username`·`email`을
+  `ssafy-account.ts`가 `chrome.storage.local`에 캐시하고(`ssafy_account_username`
+  ·`ssafy_account_email`), `upload-service.ts`가 제출 페이로드에 `ssafyUsername`
+  ·`ssafyEmail`로 함께 실어 보낸다. 백엔드는 이 계정을 **먼저** 조회하고 못 찾을
+  때만 기존 `platformUsername` → `username` 사슬을 탄다(순수 추가라 구버전
+  익스텐션은 그대로 동작). 로그아웃이 확인되면 캐시를 즉시 비운다 — 공유 PC에서
+  이전 사용자에게 풀이가 귀속되는 것을 막는다(네트워크 오류는 로그아웃이 아니므로
+  비우지 않는다). 계약: `ssafy-advisor/docs/contract/apis-extension.md` §3.1/§5.1.
 
 - ⚠️ **백준(acmicpc.net)은 2026-04-28자로 채점 서비스를 종료했다.** 모든 경로가
   "BOJ 채점 서비스 준비 중" 안내 페이지로 대체돼 `findUsername()`·`#status-table`이
