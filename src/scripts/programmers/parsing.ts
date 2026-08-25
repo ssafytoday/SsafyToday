@@ -108,8 +108,18 @@ export async function parseData(): Promise<ParsedProblemData> {
         .reduce((a, b) => `${a}/${b}`)
     : "";
 
-  const titleElement = document.querySelector(".algorithm-title .challenge-title");
-  const title = titleElement?.textContent?.replace(/\\n/g, "").trim() || "";
+  // title 도 problemId/level 과 같은 이유로 폴백이 필요하다 — 백엔드가 빈 title 을
+  // INVALID_REQUEST(400)로 거부하고, 400은 재시도 큐에서 '영구 실패'로 즉시 폐기되어
+  // 그 풀이가 통째로 사라진다. 셀렉터 하나에 기대지 않는다.
+  const titleElement =
+    document.querySelector(".algorithm-title .challenge-title") ||
+    document.querySelector(".challenge-title") ||
+    document.querySelector("[data-lesson-title]");
+  const title =
+    titleElement?.textContent?.replace(/\\n/g, "").trim() ||
+    // 문서 제목: "코딩테스트 연습 - 두 수의 합 | 프로그래머스"
+    document.title.split("|")[0].replace(/^.*?-\s*/, "").trim() ||
+    (problemId ? `프로그래머스 ${problemId}` : "");
 
   const descElement = document.querySelector("div.guide-section-description > div.markdown");
   const problemDescription = descElement?.innerHTML || "";
@@ -262,8 +272,14 @@ export async function parseData(): Promise<ParsedProblemData> {
   if (!memory) memory = "0.0 MB";
 
   // Get language for folder organization
-  const languageButton = document.querySelector("div#tour7 > button");
-  const language = languageButton?.textContent?.trim() || "";
+  // title 과 같은 이유로 폴백 필수 — 빈 language 는 400으로 거부되고 큐에서 폐기된다.
+  // 마지막 수단으로라도 값을 채워 제출을 살린다(언어 표기가 부정확한 편이
+  // 기록이 통째로 사라지는 것보다 낫다).
+  const languageButton =
+    document.querySelector("div#tour7 > button") ||
+    document.querySelector("button.language-selector") ||
+    document.querySelector("[data-editor-language]");
+  const language = languageButton?.textContent?.trim() || "unknown";
 
   return makeData({
     link,

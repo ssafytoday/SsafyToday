@@ -321,14 +321,16 @@ async function syncCredentialsToServer(): Promise<void> {
       console.log('[SsafyToday] Not authenticated, skipping sync');
       sessionStorage.setItem(SYNC_SESSION_KEY, 'not_authenticated');
     } else {
-      console.warn('[SsafyToday] Sync failed with status:', response.status);
-      // 실패해도 세션 동안 재시도하지 않음
-      sessionStorage.setItem(SYNC_SESSION_KEY, 'failed');
+      // 일시적 실패(5xx·502 등)는 **세션을 봉인하지 않는다**. 봉인하면 그 탭에서는
+      // 이후 어떤 페이지 이동에도 동기화가 다시 시도되지 않고, 동기화 성공이
+      // 유일한 트리거인 재시도 큐 flush 까지 함께 막혀 밀린 제출이 탭을 닫을
+      // 때까지 방치된다. 호출부는 페이지 로드당 1회뿐이라(initAutoSync) 봉인을
+      // 풀어도 재시도 루프가 되지 않는다.
+      console.warn('[SsafyToday] Sync failed with status:', response.status, '- will retry on next page load');
     }
   } catch (error) {
-    console.error('[SsafyToday] Error syncing credentials:', error);
-    // 네트워크 오류 시에도 세션 동안 재시도하지 않음
-    sessionStorage.setItem(SYNC_SESSION_KEY, 'error');
+    // 네트워크 오류도 위와 같은 이유로 봉인하지 않는다.
+    console.error('[SsafyToday] Error syncing credentials (will retry on next page load):', error);
   }
 }
 

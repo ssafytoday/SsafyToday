@@ -453,6 +453,11 @@ class SWExpertAcademyHub extends PlatformHubBase {
         if (!codeResult) {
           log.error("코드 파싱에 실패했습니다.");
           this.restoreModalConfirmButton();
+          // 실패해도 반드시 재무장한다 — LoaderService.start 가 onSuccess 앞에서
+          // stop() 을 부르는데, v3.5.8 이 결과 페이지 이동을 없애면서 새 content
+          // script 로 되살아나던 자연 복구까지 사라졌다. 재무장하지 않으면 이 탭은
+          // 이후 어떤 제출도 감지하지 못하고, 사용자에게는 아무 신호도 없다.
+          this.rearmAfterPopupClose();
           return;
         }
 
@@ -475,6 +480,8 @@ class SWExpertAcademyHub extends PlatformHubBase {
       } catch (error) {
         log.error("SWEA 제출 처리 중 오류:", error);
         this.restoreModalConfirmButton();
+        // 위와 같은 이유 — 예외 한 번이 그 탭의 감지를 영구히 끄지 않게 한다.
+        this.rearmAfterPopupClose();
       }
     };
 

@@ -257,10 +257,14 @@ export default class PlatformHubBase {
         return { success: false, error: "No data to send" };
       }
 
+      // 플랫폼 닉네임이 비어도 여기서 막지 않는다 — ssafy.today 계정만으로도
+      // 백엔드가 주인을 찾을 수 있고(v3.5.10), 신원이 정말 하나도 없을 때만
+      // UploadService 가 거른다. 예전에는 여기서 조용히 끊겨 제출이 재시도
+      // 큐에도 남지 않고 사라졌다.
       if (!platformUsername) {
-        log.warn(`${this.config.platformName} - No platform username available`);
-        Toast.raiseToast(`${this.config.platformName} 사용자명을 찾을 수 없습니다.`);
-        return { success: false, error: "Platform username not found" };
+        log.warn(
+          `${this.config.platformName} - No platform username; falling back to ssafy.today account`
+        );
       }
 
       // problemInfo가 없으면 data에서 직접 필드 추출 (parseData가 flat 구조로 반환하는 경우)

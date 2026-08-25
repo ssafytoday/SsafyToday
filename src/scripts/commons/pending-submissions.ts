@@ -110,6 +110,24 @@ export async function enqueuePendingSubmission(data: SubmissionData): Promise<vo
 }
 
 /**
+ * 전송이 확정된 제출을 큐에서 지운다 (선기록(write-ahead)의 짝).
+ */
+export async function removePendingSubmission(data: SubmissionData): Promise<void> {
+  try {
+    const key = entryKey(data);
+    const snapshot = await readQueue();
+    if (!snapshot.some((e) => entryKey(e.data) === key)) return;
+    await mergeWriteQueue(
+      snapshot,
+      snapshot.filter((e) => entryKey(e.data) !== key)
+    );
+  } catch (e) {
+    // 지우기 실패는 무해하다 — 다음 flush 에서 재전송되고 백엔드가 중복으로 흡수한다.
+    log.debug("Failed to remove pending submission:", e);
+  }
+}
+
+/**
  * 큐의 제출들을 재전송. 성공(중복 포함)·INVALID_REQUEST(영구 실패)는 제거,
  * USER_NOT_FOUND(아직 미연동)는 시도 횟수 소모 없이 보존, 그 외 실패는 카운트.
  * @param options.force 재시도 간격(30분)과 **페이지 로드당 1회 가드**를 모두 무시하고
