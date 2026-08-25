@@ -47,6 +47,11 @@ export interface SubmissionData {
 
     // SWEA 전용 (선택)
     length?: string;
+    // 채점 결과. 익스텐션은 정답('pass입니다' 팝업)만 감지·전송하므로 항상 'Pass'다.
+    // 이걸 보내기 전에는 백엔드가 result='Accept'를 하드코딩했고, 피드백 워커가
+    // result == 'Pass' 리터럴로 합격을 판정하는 바람에 **정답 제출이 전부 오답 리뷰**를
+    // 받았다. 백엔드 계약: apis-extension.md §3.2(2026-08-26 추가, 없으면 'Accept' 폴백)
+    result?: string;
   };
   metadata: {
     extensionVersion: string;

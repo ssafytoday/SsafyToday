@@ -95,6 +95,11 @@ export default class UploadService {
         // 죽어 있어서 length가 항상 누락됐다 — 두 표기를 모두 받는다.
         platformSpecificData = {
           length: info?.length || "",
+          // SWEA 감지는 'pass입니다' 팝업 하나뿐이라(swexpertacademy.ts) 여기 오는 제출은
+          // 전부 정답이다. 명시적으로 실어 보내야 백엔드가 합격으로 판정한다 —
+          // 예전엔 백엔드가 result='Accept'를 하드코딩했는데 피드백 워커는 'Pass'만
+          // 합격으로 봐서, 정답 제출에 "테스트를 통과하지 못했습니다" 리뷰가 나갔다.
+          result: "Pass",
         };
       }
 
