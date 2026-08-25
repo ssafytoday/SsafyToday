@@ -123,6 +123,11 @@ npm run package   # build + build.mjs → packages/SsafyToday-v{version}.zip
   → 태그 전에 `package.json` + `src/manifest.json` 버전을 **함께** 올려야 하고 태그와 일치시킨다.
 - 웹스토어 업로드 스텝은 **시크릿 3개가 모두 설정된 경우에만** 실행된다(`release.yml`의 gate).
   미설정 시 조용히 건너뛰고 GitHub Release는 정상 생성 → 기존 수동 배포 흐름과 호환.
+- ⚠️ **이 저장소는 그 스위치가 전부 켜져 있다** (2026-08-25 확인: 시크릿 3개 + 변수
+  `CHROME_AUTO_PUBLISH=true`). 즉 `v*` 태그를 미는 순간 GitHub Release에서 멈추지 않고
+  **웹스토어 업로드 + 검수 제출까지** 자동으로 간다. "Release까지만 나가겠지" 하고 태그를
+  밀면 그대로 학생 전체 배포 경로에 오르며, 스토어 제출은 되돌리기 어렵다.
+  릴리스 의도가 아니라면 태그를 만들지 말 것 — `develop` 푸시만으로는 아무것도 트리거되지 않는다.
 
 ### 배포 절차 (이 수정을 사용자에게 반영)
 
@@ -141,8 +146,9 @@ npm run package   # build + build.mjs → packages/SsafyToday-v{version}.zip
 | `CHROME_CLIENT_SECRET` | 그 클라이언트 시크릿 |
 | `CHROME_REFRESH_TOKEN` | 스토어 아이템 소유 계정으로 `chromewebstore` 스코프 승인해 발급한 refresh token |
 
-- **저장소 변수(옵션)** `CHROME_AUTO_PUBLISH=true` → 업로드 후 **자동 게시(검수 제출)**까지.
+- **저장소 변수** `CHROME_AUTO_PUBLISH=true` → 업로드 후 **자동 게시(검수 제출)**까지.
   미설정(기본): 업로드(초안)만 하고 게시는 대시보드에서 수동 클릭.
+  **현재 이 저장소는 `true`다** — 초안에서 멈추길 원하면 변수를 지우거나 `false`로 바꿀 것.
 - extension id는 워크플로에 하드코딩(`jggahimpefpcecjhbhhhlalhbmpkbghm`, 공개값).
 - 업로드는 표준 CLI `chrome-webstore-upload-cli@3`(env: `EXTENSION_ID`/`CLIENT_ID`/`CLIENT_SECRET`/`REFRESH_TOKEN`)로 수행.
 
